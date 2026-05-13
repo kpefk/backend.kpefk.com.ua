@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Model for user authorization in the MyKPEFK system
+model User {
+  id String @id @default(uuid())
+
+  email    String   @unique
+  password String
+  role     UserRole @default(STUDENT)
+
+  isTwoFactorEnabled Boolean @default(false) @map("is_two_factor_enabled")
+  isFirstLogin       Boolean @default(true) @map("is_first_login")
+  isActive           Boolean @default(true) @map("is_active")
+
+  tokens  Token[]
+  student Student?
+  teacher Teacher?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+/// Model for tokens
+model Token {
+  id String @id @default(uuid())
+
+  token     String    @unique
+  type      TokenType
+  expiresIn DateTime  @map("expires_in")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("tokens")
+}
+
+/// List of user roles in the MyKPEFK system
+enum UserRole {
+  STUDENT // Student
+  TEACHER // Teacher
+  SCHEDULE_DISPATCHER // Schedule dispatcher
+  HEAD_OF_DEPARTMENT // Head of department
+  DEPUTY_DIRECTOR // Deputy director
+  DIRECTOR // Director
+  ADMINISTRATOR // Administrator
+}
+
+/// Model for token types
+enum TokenType {
+  TWO_FACTOR // Two-factor authentication
+  PASSWORD_RESET // Password reset
+}
+
+/// Model for detailed student information
+model Student {
+  id String @id @default(uuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique @map("user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("students")
+}
+
+/// Model for detailed teacher information
+model Teacher {
+  id String @id @default(uuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique @map("user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  classrooms Classroom[]
+
+  @@map("teachers")
+}
+
+/// Model for classrooms
+model Classroom {
+  id String @id @default(uuid())
+
+  number String @unique // Classroom number (№6, №6а, №10)
+  name   String @unique // Classroom name (Scientific and natural sciences classroom, Software laboratory)
+  photos Json   @default("[]") // Photos of the classroom (Up to 4 photos)
+
+  // Head of the classroom
+  teacherId String?  @map("teacher_id")
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull) // The classroom should not disappear if the teacher is deleted
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("classrooms")
+}

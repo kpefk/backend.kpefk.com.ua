@@ -1,0 +1,109 @@
+import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common'
+import { NestFactory, Reflector } from '@nestjs/core'
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { ConfigService } from '@nestjs/config'
+import { RedisStore } from 'connect-redis'
+import * as cookieParser from 'cookie-parser'
+import * as session from 'express-session'
+import { createClient } from 'redis'
+
+import { AppModule } from './app.module'
+import { ms, StringValue } from './libs/common/utils/ms.util'
+import { parseBoolean } from './libs/common/utils/parse-boolean.util'
+
+/**
+ * Запускає додаток NestJS.
+ *
+ * Функція ініціалізує додаток, налаштовує проміжне ПЗ,
+ * конфігурує управління сесіями і запускає сервер.
+ *
+ * @async
+ * @function bootstrap
+ * @returns {Promise<void>} Проміс, який дозволяє, коли додаток запущено.
+ */
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule)
+
+  const configService = app.get(ConfigService)
+
+  const redis = createClient({
+    password: configService.getOrThrow<string>('redis.password'),
+    socket: {
+      host: configService.getOrThrow<string>('redis.host'),
+      port: configService.getOrThrow<number>('redis.port')
+    }
+  })
+
+  await redis.connect().catch(console.error)
+
+  app.use(cookieParser(configService.getOrThrow<string>('COOKIES_SECRET')))
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      transform: true
+    })
+  )
+
+  // Глобальна серіалізація (@Exclude / @Expose на entity класах)
+  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)))
+
+  // Swagger документація
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('MyKPEFK Backend')
+    .setDescription('API документація системи MyKPEFK')
+    .setVersion('1.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'Authorization',
+        in: 'header'
+      },
+      'access-token'
+    )
+    .build()
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig)
+
+  // Документація доступна за /docs
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true // Зберігає токен між перезавантаженнями сторінки
+    }
+  })
+
+  app.use(
+    session({
+      secret: configService.getOrThrow<string>('SESSION_SECRET'),
+      name: configService.getOrThrow<string>('SESSION_NAME'),
+      resave: true,
+      saveUninitialized: false,
+      cookie: {
+        domain: configService.getOrThrow<string>('SESSION_DOMAIN'),
+        maxAge: ms(configService.getOrThrow<StringValue>('SESSION_MAX_AGE')),
+        httpOnly: parseBoolean(
+          configService.getOrThrow<string>('SESSION_HTTP_ONLY')
+        ),
+        secure: parseBoolean(
+          configService.getOrThrow<string>('SESSION_SECURE')
+        ),
+        sameSite: 'lax'
+      },
+      store: new RedisStore({
+        client: redis,
+        prefix: configService.getOrThrow<string>('SESSION_FOLDER')
+      })
+    })
+  )
+
+  app.enableCors({
+    origin: configService.getOrThrow<string>('ALLOWED_ORIGIN'),
+    credentials: true,
+    exposedHeaders: ['set-cookie']
+  })
+
+  await app.listen(configService.getOrThrow<number>('APPLICATION_PORT'))
+}
+
+bootstrap()
