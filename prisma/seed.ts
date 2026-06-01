@@ -70,6 +70,8 @@ async function seedAdministrator() {
   console.log(`  📋 Role: ${user.role}`)
 }
 
+
+
 // ── Entry point ───────────────────────────────────────────────────
 
 main()

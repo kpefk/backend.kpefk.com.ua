@@ -31,7 +31,23 @@ export class UserService {
    */
   public async findById(id: string) {
     const user = await this.prismaService.user.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        student: {
+          select: {
+            personFIO: true,
+            groupName: true
+          }
+        },
+        teacher: {
+          select: {
+            lastName: true,
+            firstName: true,
+            middleName: true,
+            positionName: true
+          }
+        }
+      }
     })
 
     if (!user) {
@@ -50,7 +66,23 @@ export class UserService {
    */
   public async findByEmail(email: string) {
     return this.prismaService.user.findUnique({
-      where: { email }
+      where: { email },
+      include: {
+        student: {
+          select: {
+            personFIO: true,
+            groupName: true
+          }
+        },
+        teacher: {
+          select: {
+            lastName: true,
+            firstName: true,
+            middleName: true,
+            positionName: true
+          }
+        }
+      }
     })
   }
 

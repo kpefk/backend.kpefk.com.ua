@@ -129,7 +129,7 @@ export class AuthService {
     const hashedPassword = await hash(dto.password)
 
     // 6. Створення User + синхронізація/прив'язка Student в одній транзакції
-    const user = await this.prisma.$transaction(async (tx) => {
+    const userId = await this.prisma.$transaction(async (tx) => {
       const createdUser = await tx.user.create({
         data: {
           email: dto.email,
@@ -168,11 +168,12 @@ export class AuthService {
         })
       }
 
-      return createdUser
+      return createdUser.id
     })
 
-    // 7. Збереження сесії та повернення результату
-    return this.saveSession(req, user)
+    // 7. Отримуємо повного користувача з student даними та збереження сесії
+    const user = await this.userService.findById(userId)
+    return this.saveSession(req, user as any)
   }
 
   /**

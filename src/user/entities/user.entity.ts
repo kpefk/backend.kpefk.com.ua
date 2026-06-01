@@ -30,6 +30,22 @@ export class UserEntity {
   @Expose()
   isActive!: boolean
 
+  @ApiProperty({ description: 'Дані студента', required: false })
+  @Expose()
+  student?: {
+    personFIO: string | null
+    groupName: string | null
+  } | null
+
+  @ApiProperty({ description: 'Дані викладача', required: false })
+  @Expose()
+  teacher?: {
+    lastName: string | null
+    firstName: string | null
+    middleName: string | null
+    positionName: string | null
+  } | null
+
   @ApiProperty({ description: 'Дата створення акаунту' })
   @Expose()
   createdAt!: Date
