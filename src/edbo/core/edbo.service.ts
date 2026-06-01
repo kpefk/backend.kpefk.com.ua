@@ -24,6 +24,45 @@ export interface EdboErrorResponse {
   }>;
 }
 
+/**
+ * Тип документа від ЄДЕБО API.
+ * Використовується для пошуку та верифікації студентів під час реєстрації.
+ */
+export interface EdboPersonDocument {
+  idPersonDocument: number;
+  idPersonDocumentType: number; // 5 = РНОКПП, 16 = Студентський квиток, 36 = Паспорт, etc.
+  personDocumentTypeName: string;
+  documentSeries: string | null;
+  documentNumbers: string;
+  documentDateGet: string | null;
+  documentIssued: string | null;
+  documentExpiredDate: string | null;
+  isCancelled: boolean;
+  isDeleted: boolean;
+  // ... (інші поля опущені)
+  unzr: string | null; // Унікальний номер запису
+  rnokppUnzrValidity: string; // "Валідний" або інші статуси
+}
+
+/**
+ * Відповідь ЄДЕБО для списку документів фізичної особи.
+ */
+export interface EdboPersonDocumentsResponse {
+  documents: EdboPersonDocument[];
+  rowCount?: number;
+}
+
+/**
+ * Параметри для пошуку студента в ЄДЕБО.
+ */
+export interface EdboStudentSearchParams {
+  universityId: number;
+  qualificationGroupId?: number; // 9 = фаховий молодший бакалавр
+  historyFilterId?: number; // 1 = навчаються
+  pageNo?: number;
+  pageSize?: number;
+}
+
 // ── Сервіс ────────────────────────────────────────────────────────
 
 @Injectable()
@@ -187,5 +226,146 @@ export class EdboService {
         HttpStatus.BAD_GATEWAY,
       )
     }
+  }
+
+  // ── Публічні методи для пошуку студента ──────────────────────────
+
+  /**
+   * Шукає студентів в ЄДЕБО за документами.
+   * Це потрібно для верифікації студента під час реєстрації.
+   *
+   * @param params - Параметри пошуку (universityId, qualificationGroupId, historyFilterId)
+   * @returns Масив студентів, що відповідають критеріям
+   */
+  async searchStudents(params: EdboStudentSearchParams): Promise<any[]> {
+    return this.post<any[]>('/api/studentEducations/list', {
+      universityId: params.universityId,
+      qualificationGroupId: params.qualificationGroupId ?? 9, // 9 = фаховий молодший бакалавр
+      historyFilterId: params.historyFilterId ?? 1, // 1 = навчаються
+      pageNo: params.pageNo ?? 0,
+      pageSize: params.pageSize ?? 50,
+    })
+  }
+
+  /**
+   * Отримує документи фізичної особи за UUID кодом (personCodeU).
+   * Використовується для синхронізації документів студента.
+   *
+   * @param personCodeU - UUID код особи (наприклад з personCodeU повернутого от API)
+   * @returns Масив документів особи
+   */
+  async getPersonDocumentsSync(personCodeU: string): Promise<EdboPersonDocument[]> {
+    try {
+      const response = await this.post<EdboPersonDocument[]>(
+        '/api/physPersons/documents',
+        { personCode: personCodeU }
+      )
+      return Array.isArray(response) ? response : []
+    } catch (error) {
+      this.logger.error(`Failed to get documents for person ${personCodeU}:`, error)
+      return []
+    }
+  }
+
+  /**
+   * Пошук студента в ЄДЕБО за РНОКПП (ІПН).
+   * Повертає документи та інформацію про студента.
+   *
+   * @param rnokpp - РНОКПП студента (10 цифр)
+   * @param universityId - Код закладу в ЄДЕБО
+   * @returns Дані про студента з документами
+   */
+  async findStudentByRnokpp(rnokpp: string, universityId: number) {
+    // Спочатку шукаємо в списку студентів
+    const students = await this.searchStudents({ universityId })
+
+    // Потім перевіряємо документи кожного студента
+    for (const student of students) {
+      try {
+        const docs = await this.getPersonDocumentsSync(student.personCodeU)
+        const hasRnokpp = docs.some(
+          (doc: EdboPersonDocument) =>
+            doc.idPersonDocumentType === 5 && // 5 = РНОКПП
+            doc.documentNumbers === rnokpp
+        )
+
+        if (hasRnokpp) {
+          return { student, documents: docs }
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to get documents for student ${student.personId}:`, error)
+        continue
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Пошук студента в ЄДЕБО за студентським квитком.
+   * Повертає документи та інформацію про студента.
+   *
+   * @param series - Серія студентського квитка (наприклад "СТ" або "BC")
+   * @param number - Номер студентського квитка
+   * @param universityId - Код закладу в ЄДЕБО
+   * @returns Дані про студента з документами
+   */
+  async findStudentByTicket(series: string, number: string, universityId: number) {
+    const students = await this.searchStudents({ universityId })
+
+    for (const student of students) {
+      try {
+        const docs = await this.getPersonDocumentsSync(student.personCodeU)
+        const hasTicket = docs.some(
+          (doc: EdboPersonDocument) =>
+            doc.idPersonDocumentType === 16 && // 16 = Студентський квиток
+            doc.documentSeries === series &&
+            doc.documentNumbers === number
+        )
+
+        if (hasTicket) {
+          return { student, documents: docs }
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to get documents for student ${student.personId}:`, error)
+        continue
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Пошук студента в ЄДЕБО за паспортом.
+   * Повертає документи та інформацію про студента.
+   *
+   * @param series - Серія паспорта
+   * @param number - Номер паспорта
+   * @param universityId - Код закладу в ЄДЕБО
+   * @returns Дані про студента з документами
+   */
+  async findStudentByPassport(series: string, number: string, universityId: number) {
+    const students = await this.searchStudents({ universityId })
+
+    for (const student of students) {
+      try {
+        const docs = await this.getPersonDocumentsSync(student.personCodeU)
+        const hasPassport = docs.some(
+          (doc: EdboPersonDocument) =>
+            doc.idPersonDocumentType === 36 && // 36 = Паспорт громадянина України
+            doc.documentSeries === series &&
+            doc.documentNumbers === number
+        )
+
+        if (hasPassport) {
+          return { student, documents: docs }
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to get documents for student ${student.personId}:`, error)
+        continue
+      }
+    }
+
+    return null
   }
 }

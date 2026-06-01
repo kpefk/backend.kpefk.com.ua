@@ -8,105 +8,141 @@ import { EdboService } from '@/edbo/core/edbo.service'
 // ── Типи відповіді ЄДЕБО API ──────────────────────────────────────
 
 interface EdboStudentRecord {
-  universityId: number
+  educationId: number
   personId: number
-  listenerId: number
-  lastName: string
-  firstName: string
-  middleName: string
+  personCodeU: string
+  educationHistoryActualId: number
+  dateBegin: string
+  dateEnd: string
+  historyTypeId: number
+  personEducationHistoryTypeName: string
+  personName: string
+  personFIO: string
   birthday: string
-  countryName: string
+  personNameEn: string
+  personSexId: number
   personSexName: string
-  rnokpp: string
-  unzr: string
-  passportDocumentTypeId: number
-  passportDocumentTypeName: string
-  passportDocumentSeries: string
-  passportDocumentNumbers: string
-  passportDocumentIssuedDate: string
-  passportDocumentExpiredDate: string
-  professionClassifierCode1: string
-  professionName1: string
-  professionRangName1: string
-  professionClassifierCode2: string
-  professionName2: string
-  professionRangName2: string
-  professionClassifierCode3: string
-  professionName3: string
-  professionRangName3: string
-  professionClassifierCode4: string
-  professionName4: string
-  professionRangName4: string
-  professionClassifierCode5: string
-  professionName5: string
-  professionRangName5: string
-  educationFormName: string
-  isDual: boolean
+  isUkr: boolean
+  licenseYear: number
   educationDateBegin: string
-  reason: string
   educationDateEnd: string
+  facultyName: string
+  qualificationGroupId: number
+  qualificationGroupName: string
+  baseQualificationName: string
+  educationFormId: number
+  educationFormName: string
+  isDualForm: boolean
+  personEducationPaymentTypeName: string
+  isLegalEntityPayment: boolean
+  budgetYear: number
+  isRegionGovernanceOrder: number
+  isSecondHigher: boolean
+  isShortTerm: boolean
+  fullSpecialityName: string
+  specializationName: string
+  centralSpecializationId: number
+  universityStudyProgramId: number
+  studyProgramName: string
+  studyProgramNameEn: string
+  masterProgramTypeShortName: string
+  eduProgramChooseDate: string
+  professionInfo: string
+  courseId: number
+  courseName: string
+  groupName: string
+  isExistsGrantRequest: boolean
+  privilegeCategory: string
+  isDocEducationExists: boolean
+  isDocStudTicketExists: boolean
+  isDocAcademExists: boolean
+  isDocAcademGeneratedExists: boolean
+  academicMobilityList: string
+  expelEducationTypeName: string
+  academicLeaveTypeName: string
+  universityIdFrom: number
+  univNameFrom: string
+  isWithoutPzso: boolean
   modifyDate: string
+  enrollInfo: string
+  orderOfEnrollmentId: number
+  foreignEnrollInfo: string
+  foreignOrderOfEnrollmentId: number
+  orderStatusDiploma: string
+  orderStatusTicket: string
+  orderStatusSvid: string
+  eduEndFIO: string
+  alienId: number
+  alienCount: number
+  foreignTypeId: number
+  foreignTypeName: string
+  budgetTransferCategoryId: number
+  budgetTransferCategoryName: string
+  konkursValue: number
+  sourceTypeName: string
+  isForPhdRenewal: boolean
 }
 
 interface EdboStaffRecord {
-  universityId: number
-  personId: number
   staffId: number
-  lastName: string
-  firstName: string
-  middleName: string | null
-  birthday: string
-  countryId: number | null
-  countryName: string | null
-  personSexName: string | null
-  rnokpp: string | null
-  unzr: string | null
-  passportDocumentTypeId: number | null
-  passportDocumentTypeName: string | null
-  passportDocumentSeries: string | null
-  passportDocumentNumbers: string | null
-  passportDocumentDateGet: string | null
-  passportDocumentExpiredDate: string | null
-  isActive: boolean
-  positionName: string | null
-  positionPluralityName: string | null
-  positionPlace: string | null
-  universityFacultyId: number | null
-  universityFacultyFullName: string | null
-  universityFacultyShortName: string | null
-  universityFacultyChairId: number | null
-  universityFacultyChairFullName: string | null
-  universityFacultyChairShortName: string | null
-  profession: string | null
-  rang: string | null
-  pedagogicTitleId: string | null
-  pedagogicTitleName: string | null
-  skillId: number | null
-  skillName: string | null
+  positionName: string
+  adminPositionName: string
+  scientificPositionName: string
+  universityFacultyId: number
+  universityFacultyShortName: string
+  universityFacultyFullName: string
+  universityFacultyChairId: number
+  universityFacultyChairShortName: string
+  universityFacultyChairFullName: string
+  positionPluralityName: string
+  staffRate: number
+  personFio: string
+  personBirthday: string
+  personCountry: string
+  personSex: string
+  personId: number
+  personCode: string
+  personInfo: string
+  dateRecruit: string | null
+  dateFire: string | null
+  startDate: string | null
   stageTypeId: number | null
   stageTypeName: string | null
   stage: number | null
   isStageSolid: boolean | null
-  startDate: string | null
-  dateRecruit: string | null
-  dateFire: string | null
+  positionPlace: string | null
   coursesInfo: string | null
-  modifyDate: string | null
+  profession: string | null
+  dignityIdsStr: string | null
+  dignityIds: number[]
+  dignityNames: string | null
+  skillId: number | null
+  skillName: string | null
+  rang: string | null
+  educationInfo: string | null
+  academicTitleAndDegree: string | null
+  infoScience: string | null
+  infoIndicator: string | null
+  isActive: number
+  dateLastChange: string | null
+  personLastName: string
+  personFirstName: string
+  personMiddleName: string | null
 }
 
-// ── Параметри запитів — окремо для кожного API ───────────────────
+// ── Параметри запитів ─────────────────────────────────────────────
 
 interface EdboStudentListParams {
   universityId: number
-  isActive?: boolean
-  fromDate?: string
+  qualificationGroupId?: number
+  historyFilterId: number
   pageNo: number
+  pageSize: number
 }
 
 interface EdboStaffListParams {
   universityId: number
-  isActive?: boolean
-  fromDate?: string
+  activeId: number
   pageNo: number
   pageSize: number
 }
@@ -137,7 +173,7 @@ export class EdboSyncService {
     private readonly edboService: EdboService,
     private readonly configService: ConfigService,
   ) {
-    this.universityId = this.configService.getOrThrow<number>('EDEBO_CODE')
+    this.universityId = Number(this.configService.getOrThrow<string>('EDEBO_CODE'))
   }
 
   // ── Cron ─────────────────────────────────────────────────────────
@@ -147,9 +183,10 @@ export class EdboSyncService {
     const fromDate = this.getYesterdayIso()
     this.logger.log(`Scheduled ЄДЕБО sync started (fromDate: ${fromDate})`)
 
-    const [students, staff] = await Promise.allSettled([
+    const [students, staff, docs] = await Promise.allSettled([
       this.syncStudents(fromDate),
       this.syncStaff(fromDate),
+      this.syncStudentDocuments(),
     ])
 
     if (students.status === 'fulfilled') {
@@ -163,6 +200,12 @@ export class EdboSyncService {
     } else {
       this.logger.error('Staff sync failed', staff.reason)
     }
+
+    if (docs.status === 'fulfilled') {
+      this.logger.log(`Student documents sync completed: ${docs.value}`)
+    } else {
+      this.logger.error('Student documents sync failed', docs.reason)
+    }
   }
 
   // ── Публічні методи синхронізації ────────────────────────────────
@@ -175,12 +218,26 @@ export class EdboSyncService {
 
     while (true) {
       const records = await this.edboService.post<EdboStudentRecord[]>(
-        '/api/listener/listExternal',
+        '/api/studentEducations/list',
         {
           universityId: this.universityId,
-          isActive: true,
-          fromDate,
+          /*
+            Освітній ступінь
+              1 - Бакалавр
+              2 - Магістр
+              3 - Спеціаліст
+              4 - Молодший спеціаліст
+              5 - Кваліфікований робітник
+              6 - Молодший бакалавр
+              7 - Доктор філософії
+              8 - Доктор наук
+              9 - Фаховий молодший бакалавр
+              10 - Доктор мистецтва
+          */
+          qualificationGroupId: 9, // 9 = фаховий молодший бакалавр
+          historyFilterId: 1, // 1 = навчаються
           pageNo,
+          pageSize: STUDENT_PAGE_SIZE,
         } satisfies EdboStudentListParams,
       )
 
@@ -190,19 +247,33 @@ export class EdboSyncService {
         const existing = await this.prisma.student.findFirst({
           where: {
             personId: record.personId,
-            universityId: record.universityId,
+            universityId: this.universityId,
           },
         })
+
+        const studentData = this.mapStudentData(record)
+
+        // 1. Отримуємо документи студента
+        const documents = await this.edboService.getPersonDocumentsSync(record.personCodeU)
+
+        // 2. Витягуємо конкретні типи документів
+        const documentData = this.extractDocumentFields(documents)
+
+        // 3. Об'єднуємо дані студента з документами
+        const dataWithDocuments = {
+          ...studentData,
+          ...documentData,
+        }
 
         if (existing) {
           await this.prisma.student.update({
             where: { id: existing.id },
-            data: this.mapStudentData(record),
+            data: dataWithDocuments,
           })
           result.updated++
         } else {
           await this.prisma.student.create({
-            data: { ...this.mapStudentData(record), userId: undefined },
+            data: { ...dataWithDocuments, userId: undefined },
           })
           result.created++
         }
@@ -221,6 +292,78 @@ export class EdboSyncService {
     return result
   }
 
+  /**
+   * Синхронізує документи студентів, що не мають їх у БД.
+   * Проходить по студентам без документів або з пустим документів,
+   * отримує їх з ЄДЕБО API та записує конкретні поля.
+   *
+   * @returns Кількість студентів, документи яких були синхронізовані
+   */
+  public async syncStudentDocuments(): Promise<number> {
+    this.logger.log('Syncing student documents from ЄДЕБО...')
+
+    const allStudents = await this.prisma.student.findMany({
+      select: {
+        id: true,
+        personCodeU: true,
+        rnokpp: true,
+        passportSeries: true,
+        passportNumbers: true,
+        studentTicketSeries: true,
+        studentTicketNumbers: true,
+      },
+      take: 100, // Обмежуємо до 100 за раз щоб не перевантажувати API
+    })
+
+    // Фільтруємо студентів без документів (всі поля null/empty)
+    const studentsWithoutDocs = allStudents.filter(
+      s =>
+        !s.rnokpp &&
+        !s.passportSeries &&
+        !s.passportNumbers &&
+        !s.studentTicketSeries &&
+        !s.studentTicketNumbers
+    )
+
+    if (studentsWithoutDocs.length === 0) {
+      this.logger.log('No students without documents found')
+      return 0
+    }
+
+    this.logger.log(`Found ${studentsWithoutDocs.length} students without documents`)
+
+    let synced = 0
+
+    for (const student of studentsWithoutDocs) {
+      try {
+        const documents = await this.edboService.getPersonDocumentsSync(student.personCodeU)
+
+        if (documents && documents.length > 0) {
+          const documentData = this.extractDocumentFields(documents)
+
+          if (
+            documentData.rnokpp ||
+            documentData.passportSeries ||
+            documentData.passportNumbers ||
+            documentData.studentTicketSeries ||
+            documentData.studentTicketNumbers
+          ) {
+            await this.prisma.student.update({
+              where: { id: student.id },
+              data: documentData,
+            })
+            synced++
+          }
+        }
+      } catch (error) {
+        this.logger.warn(`Failed to sync documents for student ${student.id}:`, error)
+      }
+    }
+
+    this.logger.log(`Student documents sync done: ${synced}/${studentsWithoutDocs.length}`)
+    return synced
+  }
+
   public async syncStaff(fromDate?: string): Promise<SyncResult> {
     this.logger.log('Syncing staff from ЄДЕБО...')
 
@@ -229,11 +372,10 @@ export class EdboSyncService {
 
     while (true) {
       const records = await this.edboService.post<EdboStaffRecord[]>(
-        '/api/university/staff/listExternal',
+        '/api/university/staff/list',
         {
           universityId: this.universityId,
-          isActive: true,
-          fromDate,
+          activeId: 1, // 1 = лише працюючі
           pageNo,
           pageSize: STAFF_PAGE_SIZE,
         } satisfies EdboStaffListParams,
@@ -275,73 +417,97 @@ export class EdboSyncService {
 
   // ── Маппінг ───────────────────────────────────────────────────────
 
+  /**
+   * Витягує конкретні типи документів з масиву документів ЄДЕБО
+   * та відображає їх на поля Student моделі.
+   *
+   * @param documents Масив документів від ЄДЕБО API
+   * @returns Об'єкт з полями для збереження у БД
+   */
+  private extractDocumentFields(documents: any[]): {
+    rnokpp?: string
+    passportSeries?: string
+    passportNumbers?: string
+    studentTicketSeries?: string
+    studentTicketNumbers?: string
+  } {
+    const result: any = {}
+
+    for (const doc of documents) {
+      // 5 = РНОКПП
+      if (doc.idPersonDocumentType === 5 && doc.documentNumbers) {
+        result.rnokpp = doc.documentNumbers
+      }
+
+      // 16 = Студентський квиток
+      if (doc.idPersonDocumentType === 16) {
+        if (doc.documentSeries) result.studentTicketSeries = doc.documentSeries
+        if (doc.documentNumbers) result.studentTicketNumbers = doc.documentNumbers
+      }
+
+      // 36 = Паспорт громадянина України
+      if (doc.idPersonDocumentType === 36) {
+        if (doc.documentSeries) result.passportSeries = doc.documentSeries
+        if (doc.documentNumbers) result.passportNumbers = doc.documentNumbers
+      }
+    }
+
+    return result
+  }
+
   private mapStudentData(r: EdboStudentRecord) {
     return {
-      universityId: r.universityId,
       personId: r.personId,
-      listenerId: r.listenerId,
-      lastName: r.lastName,
-      firstName: r.firstName,
-      middleName: r.middleName,
-      birthday: new Date(r.birthday),
-      countryName: r.countryName,
+      universityId: this.universityId,
+      educationId: r.educationId,
+      personCodeU: r.personCodeU,
+      educationHistoryActualId: r.educationHistoryActualId,
+      dateBegin: r.dateBegin ? new Date(r.dateBegin) : null,
+      dateEnd: r.dateEnd ? new Date(r.dateEnd) : null,
+      historyTypeId: r.historyTypeId,
+      personFIO: r.personFIO,
+      birthday: r.birthday ? new Date(r.birthday) : null,
       personSexName: r.personSexName,
-      rnokpp: r.rnokpp,
-      unzr: r.unzr,
-      passportDocumentTypeId: r.passportDocumentTypeId,
-      passportDocumentTypeName: r.passportDocumentTypeName,
-      passportDocumentSeries: r.passportDocumentSeries,
-      passportDocumentNumbers: r.passportDocumentNumbers,
-      passportDocumentIssuedDate: new Date(r.passportDocumentIssuedDate),
-      passportDocumentExpiredDate: new Date(r.passportDocumentExpiredDate),
-      professionClassifierCode1: r.professionClassifierCode1,
-      professionName1: r.professionName1,
-      professionRangName1: r.professionRangName1,
-      professionClassifierCode2: r.professionClassifierCode2,
-      professionName2: r.professionName2,
-      professionRangName2: r.professionRangName2,
-      professionClassifierCode3: r.professionClassifierCode3,
-      professionName3: r.professionName3,
-      professionRangName3: r.professionRangName3,
-      professionClassifierCode4: r.professionClassifierCode4,
-      professionName4: r.professionName4,
-      professionRangName4: r.professionRangName4,
-      professionClassifierCode5: r.professionClassifierCode5,
-      professionName5: r.professionName5,
-      professionRangName5: r.professionRangName5,
+      licenseYear: r.licenseYear,
+      educationDateBegin: r.educationDateBegin ? new Date(r.educationDateBegin) : null,
+      educationDateEnd: r.educationDateEnd ? new Date(r.educationDateEnd) : null,
+      facultyName: r.facultyName,
+      qualificationGroupId: r.qualificationGroupId,
+      qualificationGroupName: r.qualificationGroupName,
+      educationFormId: r.educationFormId,
       educationFormName: r.educationFormName,
-      isDual: r.isDual,
-      educationDateBegin: new Date(r.educationDateBegin),
-      reason: r.reason,
-      educationDateEnd: new Date(r.educationDateEnd),
+      isDualForm: r.isDualForm,
+      isSecondHigher: r.isSecondHigher,
+      isShortTerm: r.isShortTerm,
+      fullSpecialityName: r.fullSpecialityName,
+      universityStudyProgramId: r.universityStudyProgramId,
+      studyProgramName: r.studyProgramName,
+      professionInfo: r.professionInfo,
+      courseId: r.courseId,
+      courseName: r.courseName,
+      groupName: r.groupName,
+      expelEducationTypeName: r.expelEducationTypeName,
+      academicLeaveTypeName: r.academicLeaveTypeName,
+      modifyDate: r.modifyDate ? new Date(r.modifyDate) : null,
+      foreignTypeId: r.foreignTypeId,
+      foreignTypeName: r.foreignTypeName,
+      budgetTransferCategoryId: r.budgetTransferCategoryId,
+      budgetTransferCategoryName: r.budgetTransferCategoryName,
+      isForPhdRenewal: r.isForPhdRenewal,
     }
   }
 
   private mapStaffData(r: EdboStaffRecord) {
     return {
-      universityId: r.universityId,
-      personId: r.personId,
       staffId: r.staffId,
-      lastName: r.lastName,
-      firstName: r.firstName,
-      middleName: r.middleName,
-      birthday: new Date(r.birthday),
-      countryId: r.countryId,
-      countryName: r.countryName,
-      personSexName: r.personSexName,
-      rnokpp: r.rnokpp,
-      unzr: r.unzr,
-      passportDocumentTypeId: r.passportDocumentTypeId,
-      passportDocumentTypeName: r.passportDocumentTypeName,
-      passportDocumentSeries: r.passportDocumentSeries,
-      passportDocumentNumbers: r.passportDocumentNumbers,
-      passportDocumentDateGet: r.passportDocumentDateGet
-        ? new Date(r.passportDocumentDateGet)
-        : null,
-      passportDocumentExpiredDate: r.passportDocumentExpiredDate
-        ? new Date(r.passportDocumentExpiredDate)
-        : null,
-      isActive: r.isActive,
+      personId: r.personId,
+      lastName: r.personLastName,
+      firstName: r.personFirstName,
+      middleName: r.personMiddleName,
+      birthday: r.personBirthday ? new Date(r.personBirthday) : null,
+      countryName: r.personCountry,
+      personSexName: r.personSex,
+      isActive: r.isActive === 1,
       positionName: r.positionName,
       positionPluralityName: r.positionPluralityName,
       positionPlace: r.positionPlace,
@@ -353,8 +519,6 @@ export class EdboSyncService {
       universityFacultyChairShortName: r.universityFacultyChairShortName,
       profession: r.profession,
       rang: r.rang,
-      pedagogicTitleId: r.pedagogicTitleId,
-      pedagogicTitleName: r.pedagogicTitleName,
       skillId: r.skillId,
       skillName: r.skillName,
       stageTypeId: r.stageTypeId,
@@ -365,6 +529,7 @@ export class EdboSyncService {
       dateRecruit: r.dateRecruit ? new Date(r.dateRecruit) : null,
       dateFire: r.dateFire ? new Date(r.dateFire) : null,
       coursesInfo: r.coursesInfo,
+      modifyDate: r.dateLastChange ? new Date(r.dateLastChange) : null,
     }
   }
 

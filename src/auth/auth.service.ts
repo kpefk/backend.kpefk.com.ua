@@ -14,6 +14,7 @@ import { Request, Response } from 'express'
 import { PrismaService } from '@/prisma/prisma.service'
 import { UserService } from '@/user/user.service'
 import { MailService } from '@/libs/mail/mail.service'
+import { EdboService } from '@/edbo/core/edbo.service'
 
 import { LoginDto } from './dto/login.dto'
 import { RegisterStudentDto } from './dto/register-student.dto'
@@ -27,7 +28,8 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
     private readonly prisma: PrismaService,
-    private readonly mailService: MailService
+    private readonly mailService: MailService,
+    private readonly edboService: EdboService
   ) {}
 
   /**
@@ -106,14 +108,14 @@ export class AuthService {
     }
 
     // 3. Пошук студента в ЄДЕБО через наявні документи
-    const edeboStudent = await this.findStudentInEdebo(dto)
+    const edeboResult = await this.findStudentInEdebo(dto)
 
     // 4. Перевірка: чи студент вже прив'язаний до акаунту
     const alreadyLinked = await this.prisma.student.findFirst({
       where: {
-        personId: edeboStudent.personId,
-        universityId: edeboStudent.universityId,
-        NOT: { userId: { equals: null } } // ✅ виправлено
+        personId: edeboResult.student.personId,
+        universityId: edeboResult.student.universityId,
+        NOT: { userId: null }
       }
     })
 
@@ -126,7 +128,7 @@ export class AuthService {
     // 5. Хешування пароля
     const hashedPassword = await hash(dto.password)
 
-    // 6. Створення User + прив'язка Student в одній транзакції
+    // 6. Створення User + синхронізація/прив'язка Student в одній транзакції
     const user = await this.prisma.$transaction(async (tx) => {
       const createdUser = await tx.user.create({
         data: {
@@ -136,19 +138,35 @@ export class AuthService {
         }
       })
 
-      await tx.student.update({
-        where: { id: edeboStudent.id },
-        data: {
-          userId: createdUser.id,
-          rnokpp: dto.no_rnokpp ? '' : (dto.rnokpp ?? ''),
-          passportDocumentSeries: dto.no_student_ticket
-            ? (dto.serial_passport ?? '')
-            : (dto.serial_ticket ?? ''),
-          passportDocumentNumbers: dto.no_student_ticket
-            ? (dto.number_passport ?? '')
-            : (dto.number_ticket ?? '')
+      // Синхронізуємо дані студента з ЄДЕБО (або оновлюємо наявного)
+      const studentData = this.mapEdboStudentData(edeboResult.student, dto, edeboResult.documents)
+
+      let studentRecord = await tx.student.findFirst({
+        where: {
+          personId: edeboResult.student.personId,
+          universityId: edeboResult.student.universityId || this.configService.getOrThrow<number>('EDEBO_CODE')
         }
       })
+
+      if (studentRecord) {
+        // Оновлюємо наявного студента
+        await tx.student.update({
+          where: { id: studentRecord.id },
+          data: {
+            ...studentData,
+            userId: createdUser.id,
+            id: undefined // Не включаємо id в оновлення
+          }
+        })
+      } else {
+        // Створюємо нового студента
+        await tx.student.create({
+          data: {
+            ...studentData,
+            userId: createdUser.id
+          }
+        })
+      }
 
       return createdUser
     })
@@ -158,53 +176,152 @@ export class AuthService {
   }
 
   /**
-   * Finds a pre-imported student in the local ЄДЕБО-synced database by available documents.
-   * The student record must not yet be linked to any user account (userId = null).
-   * Priority: RNOKPP → student ticket → passport series + number.
+   * Finds a student in ЄДЕБО by available documents.
+   * Priority: RNOKPP → student ticket → passport.
+   * First checks local database, then queries ЄДЕБО API.
    * @param dto - The registration DTO with document fields.
-   * @returns The found Student record or throws BadRequestException.
+   * @returns The found Student record from ЄДЕБО with documents.
    * @throws BadRequestException if no identification document is provided.
+   * @throws NotFoundException if student is not found in ЄДЕБО.
    */
   private async findStudentInEdebo(dto: RegisterStudentDto) {
-    // Варіант 1: пошук по РНОКПП
+    const universityId = this.configService.getOrThrow<number>('EDEBO_CODE')
+
+    // Варіант 1: пошук по РНОКПП (найбільш надійний)
     if (!dto.no_rnokpp && dto.rnokpp) {
-      const student = await this.prisma.student.findFirst({
+      // Спочатку перевіряємо локальну БД
+      const localStudent = await this.prisma.student.findFirst({
         where: {
           rnokpp: dto.rnokpp,
-          userId: { equals: null } // ✅
+          userId: null
         }
       })
-      if (student) return student
+      if (localStudent) {
+        return { student: localStudent, documents: [] }
+      }
+
+      // Якщо не знайшли локально, шукаємо в ЄДЕБО API
+      const edeboResult = await this.edboService.findStudentByRnokpp(dto.rnokpp, universityId)
+      if (edeboResult) {
+        return edeboResult
+      }
     }
 
     // Варіант 2: пошук по студентському квитку
     if (!dto.no_student_ticket && dto.serial_ticket && dto.number_ticket) {
-      const student = await this.prisma.student.findFirst({
+      const localStudent = await this.prisma.student.findFirst({
         where: {
-          passportDocumentSeries: dto.serial_ticket,
-          passportDocumentNumbers: dto.number_ticket,
-          userId: { equals: null } // ✅ виправлено з null
+          studentTicketSeries: dto.serial_ticket,
+          studentTicketNumbers: dto.number_ticket,
+          userId: null
         }
       })
-      if (student) return student
+      if (localStudent) {
+        return { student: localStudent, documents: [] }
+      }
+
+      const edeboResult = await this.edboService.findStudentByTicket(
+        dto.serial_ticket,
+        dto.number_ticket,
+        universityId
+      )
+      if (edeboResult) {
+        return edeboResult
+      }
     }
 
     // Варіант 3: пошук по паспорту (fallback)
     if (dto.serial_passport && dto.number_passport) {
-      const student = await this.prisma.student.findFirst({
+      const localStudent = await this.prisma.student.findFirst({
         where: {
-          passportDocumentSeries: dto.serial_passport,
-          passportDocumentNumbers: dto.number_passport,
-          userId: { equals: null } // ✅ виправлено з null
+          passportSeries: dto.serial_passport,
+          passportNumbers: dto.number_passport,
+          userId: null
         }
       })
-      if (student) return student
+      if (localStudent) {
+        return { student: localStudent, documents: [] }
+      }
+
+      const edeboResult = await this.edboService.findStudentByPassport(
+        dto.serial_passport,
+        dto.number_passport,
+        universityId
+      )
+      if (edeboResult) {
+        return edeboResult
+      }
     }
 
-    // Жодного документа не вказано або нічого не знайдено
+    // Жодного документа не вказано
     throw new BadRequestException(
       'Необхідно вказати хоча б один ідентифікаційний документ для верифікації.'
     )
+  }
+
+  /**
+   * Маппує дані студента з ЄДЕБО відповіді до формату Student моделі Prisma.
+   * Витягує документи з ЄДЕБО та збереженого DTO.
+   *
+   * @param edeboStudent - Дані про студента з ЄДЕБО API
+   * @param dto - DTO з документами від користувача
+   * @param edeboDocuments - Документи з ЄДЕБО API
+   * @returns Об'єкт для Prisma Student create/update
+   */
+  private mapEdboStudentData(edeboStudent: any, dto: RegisterStudentDto, edeboDocuments: any[] = []) {
+    // Витягуємо номери документів з ЄДЕБО
+    const rnokppDoc = edeboDocuments.find(d => d.idPersonDocumentType === 5) // РНОКПП
+    const ticketDoc = edeboDocuments.find(d => d.idPersonDocumentType === 16) // Студентський квиток
+    const passportDoc = edeboDocuments.find(d => d.idPersonDocumentType === 36) // Паспорт
+
+    return {
+      personId: edeboStudent.personId,
+      universityId: edeboStudent.universityId || this.configService.getOrThrow<number>('EDEBO_CODE'),
+      educationId: edeboStudent.educationId,
+      personCodeU: edeboStudent.personCodeU,
+      educationHistoryActualId: edeboStudent.educationHistoryActualId,
+      dateBegin: edeboStudent.dateBegin ? new Date(edeboStudent.dateBegin) : null,
+      dateEnd: edeboStudent.dateEnd ? new Date(edeboStudent.dateEnd) : null,
+      historyTypeId: edeboStudent.historyTypeId,
+      personFIO: edeboStudent.personFIO,
+      birthday: edeboStudent.birthday ? new Date(edeboStudent.birthday) : null,
+      personSexName: edeboStudent.personSexName,
+      licenseYear: edeboStudent.licenseYear,
+      educationDateBegin: edeboStudent.educationDateBegin ? new Date(edeboStudent.educationDateBegin) : null,
+      educationDateEnd: edeboStudent.educationDateEnd ? new Date(edeboStudent.educationDateEnd) : null,
+      facultyName: edeboStudent.facultyName,
+      qualificationGroupId: edeboStudent.qualificationGroupId,
+      qualificationGroupName: edeboStudent.qualificationGroupName,
+      educationFormId: edeboStudent.educationFormId,
+      educationFormName: edeboStudent.educationFormName,
+      isDualForm: edeboStudent.isDualForm,
+      isSecondHigher: edeboStudent.isSecondHigher,
+      isShortTerm: edeboStudent.isShortTerm,
+      fullSpecialityName: edeboStudent.fullSpecialityName,
+      universityStudyProgramId: edeboStudent.universityStudyProgramId,
+      studyProgramName: edeboStudent.studyProgramName,
+      professionInfo: edeboStudent.professionInfo,
+      courseId: edeboStudent.courseId,
+      courseName: edeboStudent.courseName,
+      groupName: edeboStudent.groupName,
+      expelEducationTypeName: edeboStudent.expelEducationTypeName,
+      academicLeaveTypeName: edeboStudent.academicLeaveTypeName,
+      modifyDate: edeboStudent.modifyDate ? new Date(edeboStudent.modifyDate) : null,
+      foreignTypeId: edeboStudent.foreignTypeId,
+      foreignTypeName: edeboStudent.foreignTypeName,
+      budgetTransferCategoryId: edeboStudent.budgetTransferCategoryId,
+      budgetTransferCategoryName: edeboStudent.budgetTransferCategoryName,
+      isForPhdRenewal: edeboStudent.isForPhdRenewal,
+
+      // Документи для верифікації
+      rnokpp: rnokppDoc?.documentNumbers || (dto.no_rnokpp ? '' : (dto.rnokpp ?? '')),
+      studentTicketSeries: ticketDoc?.documentSeries || (dto.no_student_ticket ? '' : (dto.serial_ticket ?? '')),
+      studentTicketNumbers: ticketDoc?.documentNumbers || (dto.no_student_ticket ? '' : (dto.number_ticket ?? '')),
+      passportSeries: passportDoc?.documentSeries || (dto.serial_passport ?? ''),
+      passportNumbers: passportDoc?.documentNumbers || (dto.number_passport ?? ''),
+      passportDocumentSeries: dto.no_student_ticket ? (dto.serial_passport ?? '') : (dto.serial_ticket ?? ''),
+      passportDocumentNumbers: dto.no_student_ticket ? (dto.number_passport ?? '') : (dto.number_ticket ?? '')
+    }
   }
 
   /**

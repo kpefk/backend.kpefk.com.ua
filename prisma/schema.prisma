@@ -68,130 +68,134 @@ model Student {
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String? @unique @map("user_id")
 
-  universityId Int // Код закладу в ЄДЕБО
-  personId     Int // Код картки фіз. особи в ЄДЕБО
-  listenerId   Int // Код картки слухача в ЄДЕБО
+  universityId Int @map("university_id") // Код закладу в ЄДЕБО
+  personId     Int @map("person_id")     // Код картки фіз. особи в ЄДЕБО
+  educationId  Int @map("education_id")  // Код картки навчання в ЄДЕБО
+
+  // Код особи (рядковий)
+  personCodeU String @map("person_code_u")
+
+  // Актуальний запис історії навчання
+  educationHistoryActualId Int      @map("education_history_actual_id")
+  dateBegin                DateTime? @map("date_begin")
+  dateEnd                  DateTime? @map("date_end")
+  historyTypeId            Int      @map("history_type_id")
 
   // Персональні дані
-  lastName      String   @map("last_name")   // Прізвище
-  firstName     String   @map("first_name")  // Власне ім'я
-  middleName    String   @map("middle_name") // По батькові
-  birthday      DateTime                      // Дата народження
-  countryName   String   @map("country_name") // Громадянство
-  personSexName String   @map("person_sex_name") // Стать
-  rnokpp        String   // РНОКПП
-  unzr          String   // УНЗР
-
-  // Документ, що посвідчує особу
-  passportDocumentTypeId      Int      @map("passport_document_type_id")      // тип (Id)
-  passportDocumentTypeName    String   @map("passport_document_type_name")    // тип (Назва)
-  passportDocumentSeries      String   @map("passport_document_series")       // серія
-  passportDocumentNumbers     String   @map("passport_document_numbers")      // номер
-  passportDocumentIssuedDate  DateTime @map("passport_document_issued_date")  // дата видачі
-  passportDocumentExpiredDate DateTime @map("passport_document_expired_date") // термін дії
-
-  // Професії (до 5)
-  professionClassifierCode1 String @map("profession_classifier_code_1") // Код професії 1
-  professionName1           String @map("profession_name_1")            // Назва професії 1
-  professionRangName1       String @map("profession_rang_name_1")       // Розряд 1
-  professionClassifierCode2 String @map("profession_classifier_code_2") // Код професії 2
-  professionName2           String @map("profession_name_2")            // Назва професії 2
-  professionRangName2       String @map("profession_rang_name_2")       // Розряд 2
-  professionClassifierCode3 String @map("profession_classifier_code_3") // Код професії 3
-  professionName3           String @map("profession_name_3")            // Назва професії 3
-  professionRangName3       String @map("profession_rang_name_3")       // Розряд 3
-  professionClassifierCode4 String @map("profession_classifier_code_4") // Код професії 4
-  professionName4           String @map("profession_name_4")            // Назва професії 4
-  professionRangName4       String @map("profession_rang_name_4")       // Розряд 4
-  professionClassifierCode5 String @map("profession_classifier_code_5") // Код професії 5
-  professionName5           String @map("profession_name_5")            // Назва професії 5
-  professionRangName5       String @map("profession_rang_name_5")       // Розряд 5
+  personFIO     String   @map("person_fio")     // ПІБ
+  birthday      DateTime?                        // Дата народження
+  personSexName String?  @map("person_sex_name") // Стать
 
   // Навчання
-  educationFormName  String   @map("education_form_name")  // Форма навчання
-  isDual             Boolean  @map("is_dual")              // Чи дуальна форма навчання
-  educationDateBegin DateTime @map("education_date_begin") // Початок навчання (дата)
-  reason             String                                // Початок навчання (наказ / підстава)
-  educationDateEnd   DateTime @map("education_date_end")   // Закінчення навчання (дата)
+  licenseYear          Int?      @map("license_year")           // Рік ліцензійних обсягів
+  educationDateBegin   DateTime? @map("education_date_begin")   // Початок навчання
+  educationDateEnd     DateTime? @map("education_date_end")     // Закінчення навчання
+  facultyName          String?   @map("faculty_name")           // Структурний підрозділ
+  qualificationGroupId Int?      @map("qualification_group_id") // Освітній ступінь (Id)
+  qualificationGroupName String? @map("qualification_group_name") // Освітній ступінь (назва)
+  educationFormId      Int?      @map("education_form_id")      // Форма навчання (Id)
+  educationFormName    String?   @map("education_form_name")    // Форма навчання (назва)
+  isDualForm           Boolean?  @map("is_dual_form")           // Дуальна форма навчання
+  isSecondHigher       Boolean?  @map("is_second_higher")       // Здобуття за іншою спеціальністю
+  isShortTerm          Boolean?  @map("is_short_term")          // Скорочений термін
+  fullSpecialityName   String?   @map("full_speciality_name")   // Спеціальність
+  universityStudyProgramId Int?  @map("university_study_program_id") // Освітня програма (Id)
+  studyProgramName     String?   @map("study_program_name")    // Освітня програма (назва)
+  professionInfo       String?   @map("profession_info")        // Кваліфікація
+  courseId             Int?      @map("course_id")              // Курс (Id)
+  courseName           String?   @map("course_name")            // Курс (назва)
+  groupName            String?   @map("group_name")             // Група
+
+  // Відрахування / академвідпустка
+  expelEducationTypeName String? @map("expel_education_type_name") // Причина відрахування
+  academicLeaveTypeName  String? @map("academic_leave_type_name")  // Підстава академвідпустки
+
+  // Іноземці
+  foreignTypeId   Int?    @map("foreign_type_id")   // Категорія іноземців (Id)
+  foreignTypeName String? @map("foreign_type_name") // Категорія іноземців (назва)
+
+  // Переведення на бюджет
+  budgetTransferCategoryId   Int?    @map("budget_transfer_category_id")   // Категорія (Id)
+  budgetTransferCategoryName String? @map("budget_transfer_category_name") // Категорія (назва)
+
+  // Аспірантура
+  isForPhdRenewal Boolean? @map("is_for_phd_renewal")
+
+  // Документи для реєстрації та верифікації
+  rnokpp                     String? @map("rnokpp")                       // РНОКПП/ІПН
+  passportDocumentSeries     String? @map("passport_document_series")     // Серія паспорта/студентського квитка
+  passportDocumentNumbers    String? @map("passport_document_numbers")    // Номер паспорта/студентського квитка
+  studentTicketSeries        String? @map("student_ticket_series")        // Серія студентського квитка
+  studentTicketNumbers       String? @map("student_ticket_numbers")       // Номер студентського квитка
+  passportSeries             String? @map("passport_series")              // Серія паспорта
+  passportNumbers            String? @map("passport_numbers")             // Номер паспорта
 
   // Службові поля
-  createdAt  DateTime @default(now()) @map("created_at")
-  modifyDate DateTime @updatedAt      @map("modify_date") // Дата останнього редагування
+  createdAt  DateTime  @default(now()) @map("created_at")
+  modifyDate DateTime? @map("modify_date") // Дата останнього редагування в ЄДЕБО
 
   @@map("students")
 }
 
-/// Model for detailed teacher information (ЄДЕБО API: staff/listExternal)
+/// Model for detailed teacher information (ЄДЕБО API: university/staff/list)
 model Teacher {
   id String @id @default(uuid())
 
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String? @unique @map("user_id")
 
-  universityId Int @map("university_id") // Код закладу в ЄДЕБО
-  personId     Int @map("person_id")     // Код картки фіз. особи в ЄДЕБО
-  staffId      Int @unique @map("staff_id") // Код картки працівника в ЄДЕБО
+  personId Int @map("person_id") // Код картки фіз. особи в ЄДЕБО
+  staffId  Int @unique @map("staff_id") // Код картки працівника в ЄДЕБО
 
   // Персональні дані
   lastName      String   @map("last_name")       // Прізвище
   firstName     String   @map("first_name")      // Власне ім'я
   middleName    String?  @map("middle_name")     // По батькові
-  birthday      DateTime                          // Дата народження
-  countryId     Int?     @map("country_id")      // Країна громадянства (Id)
-  countryName   String?  @map("country_name")    // Країна громадянства (Назва)
+  birthday      DateTime?                         // Дата народження
+  countryName   String?  @map("country_name")    // Громадянство
   personSexName String?  @map("person_sex_name") // Стать
-  rnokpp        String?                           // РНОКПП
-  unzr          String?                           // УНЗР
-
-  // Документ, що посвідчує особу
-  passportDocumentTypeId      Int?      @map("passport_document_type_id")      // тип (Id)
-  passportDocumentTypeName    String?   @map("passport_document_type_name")    // тип (Назва)
-  passportDocumentSeries      String?   @map("passport_document_series")       // серія
-  passportDocumentNumbers     String?   @map("passport_document_numbers")      // номер
-  passportDocumentDateGet     DateTime? @map("passport_document_date_get")     // дата видачі
-  passportDocumentExpiredDate DateTime? @map("passport_document_expired_date") // термін дії
 
   // Посада та зайнятість
-  isActive              Boolean @default(true) @map("is_active")             // Працює (так/ні)
-  positionName          String? @map("position_name")                        // Посада
-  positionPluralityName String? @map("position_plurality_name")              // Трудовий статус
-  positionPlace         String? @map("position_place")                       // Місце основної роботи
+  isActive              Boolean @default(true) @map("is_active")        // Працює (так/ні)
+  positionName          String? @map("position_name")                   // Посада
+  positionPluralityName String? @map("position_plurality_name")         // Трудовий статус
+  positionPlace         String? @map("position_place")                  // Місце основної роботи
 
   // Факультет
-  universityFacultyId        Int?    @map("university_faculty_id")         // Факультет (Id)
-  universityFacultyFullName  String? @map("university_faculty_full_name")  // Факультет (назва)
-  universityFacultyShortName String? @map("university_faculty_short_name") // Факультет (коротка назва)
+  universityFacultyId        Int?    @map("university_faculty_id")
+  universityFacultyFullName  String? @map("university_faculty_full_name")
+  universityFacultyShortName String? @map("university_faculty_short_name")
 
   // Кафедра
-  universityFacultyChairId        Int?    @map("university_faculty_chair_id")         // Кафедра (Id)
-  universityFacultyChairFullName  String? @map("university_faculty_chair_full_name")  // Кафедра (назва)
-  universityFacultyChairShortName String? @map("university_faculty_chair_short_name") // Кафедра (коротка назва)
+  universityFacultyChairId        Int?    @map("university_faculty_chair_id")
+  universityFacultyChairFullName  String? @map("university_faculty_chair_full_name")
+  universityFacultyChairShortName String? @map("university_faculty_chair_short_name")
 
   // Кваліфікація
-  profession         String? // Професія
-  rang               String? // Розряд
-  pedagogicTitleId   String? @map("pedagogic_title_id")   // Педагогічне звання (Id, перелік через кому)
-  pedagogicTitleName String? @map("pedagogic_title_name") // Педагогічне звання (назва, перелік через кому)
-  skillId            Int?    @map("skill_id")             // Кваліфікаційна категорія (Id)
-  skillName          String? @map("skill_name")           // Кваліфікаційна категорія (назва)
+  profession    String? // Професія
+  rang          String? // Розряд
+  dignityIdsStr String? @map("dignity_ids_str") // Педагогічні звання (Id через кому)
+  dignityNames  String? @map("dignity_names")   // Педагогічні звання (назви)
+  skillId       Int?    @map("skill_id")         // Кваліфікаційна категорія (Id)
+  skillName     String? @map("skill_name")       // Кваліфікаційна категорія (назва)
 
   // Стаж
-  stageTypeId   Int?      @map("stage_type_id")   // Тип стажу (Id)
-  stageTypeName String?   @map("stage_type_name") // Тип стажу (назва)
-  stage         Int?                               // Стаж (повних років)
-  isStageSolid  Boolean?  @map("is_stage_solid")  // Безперервний стаж
-  startDate     DateTime? @map("start_date")       // Дата початку стажу
+  stageTypeId   Int?      @map("stage_type_id")
+  stageTypeName String?   @map("stage_type_name")
+  stage         Int?
+  isStageSolid  Boolean?  @map("is_stage_solid")
+  startDate     DateTime? @map("start_date")
 
   // Дати роботи
-  dateRecruit DateTime? @map("date_recruit") // Початок роботи в закладі
-  dateFire    DateTime? @map("date_fire")    // Дата звільнення з закладу
+  dateRecruit DateTime? @map("date_recruit")
+  dateFire    DateTime? @map("date_fire")
 
   // Підвищення кваліфікації
-  coursesInfo String? @map("courses_info") // Відомості про підвищення кваліфікації
+  coursesInfo String? @map("courses_info")
 
   // Службові поля
-  createdAt  DateTime @default(now()) @map("created_at")
-  modifyDate DateTime @updatedAt      @map("modify_date") // Дата останнього редагування
+  createdAt  DateTime  @default(now()) @map("created_at")
+  modifyDate DateTime? @map("modify_date") // Дата останньої зміни в ЄДЕБО
 
   classrooms Classroom[]
 
