@@ -101,7 +101,6 @@ interface EdboStudentListParams {
   isActive?: boolean
   fromDate?: string
   pageNo: number
-  // ✅ pageSize відсутній — фіксований 1000 записів згідно з документацією
 }
 
 interface EdboStaffListParams {
@@ -109,7 +108,7 @@ interface EdboStaffListParams {
   isActive?: boolean
   fromDate?: string
   pageNo: number
-  pageSize: number // ✅ є в документації, за замовчуванням 20
+  pageSize: number
 }
 
 export interface SyncResult {
