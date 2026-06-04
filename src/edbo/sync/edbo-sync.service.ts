@@ -3,7 +3,10 @@ import { Cron, CronExpression } from '@nestjs/schedule'
 import { ConfigService } from '@nestjs/config'
 
 import { PrismaService } from '@/prisma/prisma.service'
-import { EdboService } from '@/edbo/core/edbo.service'
+import { EdboService, EdboPersonDocument } from '@/edbo/core/edbo.service'
+import { GroupsService } from '@/groups/groups.service'
+
+import { SyncStateService, SYNC_KEYS } from './sync-state.service'
 
 // ── Типи відповіді ЄДЕБО API ──────────────────────────────────────
 
@@ -147,19 +150,30 @@ interface EdboStaffListParams {
   pageSize: number
 }
 
+// ── Результат синхронізації ───────────────────────────────────────
+
 export interface SyncResult {
   created: number
   updated: number
+  /** Пропущено: modifyDate не змінився з часу останнього sync */
+  skipped: number
   total: number
 }
 
 // ── Константи пагінації ───────────────────────────────────────────
 
-/** Фіксований розмір сторінки для /api/listener/listExternal */
+/** Фіксований розмір сторінки для /api/studentEducations/list */
 const STUDENT_PAGE_SIZE = 1000
 
-/** Розмір сторінки для /api/university/staff/listExternal (максимальний) */
+/** Розмір сторінки для /api/university/staff/list */
 const STAFF_PAGE_SIZE = 100
+
+/**
+ * Overlap-вікно в мілісекундах, що віднімається від lastSyncDate при порівнянні.
+ * Компенсує можливу різницю годинників між нашим сервером і ЄДЕБО,
+ * затримки запису на стороні ЄДЕБО і граничні випадки при точному збігу часу.
+ */
+const SYNC_OVERLAP_MS = 10 * 60 * 1000 // 10 хвилин
 
 // ── Сервіс ────────────────────────────────────────────────────────
 
@@ -172,6 +186,8 @@ export class EdboSyncService {
     private readonly prisma: PrismaService,
     private readonly edboService: EdboService,
     private readonly configService: ConfigService,
+    private readonly groupsService: GroupsService,
+    private readonly syncStateService: SyncStateService,
   ) {
     this.universityId = Number(this.configService.getOrThrow<string>('EDEBO_CODE'))
   }
@@ -180,40 +196,61 @@ export class EdboSyncService {
 
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   public async scheduledSync(): Promise<void> {
-    const fromDate = this.getYesterdayIso()
-    this.logger.log(`Scheduled ЄДЕБО sync started (fromDate: ${fromDate})`)
+    this.logger.log('Scheduled ЄДЕБО sync started')
 
     const [students, staff, docs] = await Promise.allSettled([
-      this.syncStudents(fromDate),
-      this.syncStaff(fromDate),
+      this.syncStudents(),
+      this.syncStaff(),
       this.syncStudentDocuments(),
     ])
 
     if (students.status === 'fulfilled') {
-      this.logger.log(`Students sync: +${students.value.created} / ~${students.value.updated}`)
+      const r = students.value
+      this.logger.log(`Students: created=${r.created} updated=${r.updated} skipped=${r.skipped} total=${r.total}`)
     } else {
       this.logger.error('Students sync failed', students.reason)
     }
 
     if (staff.status === 'fulfilled') {
-      this.logger.log(`Staff sync: +${staff.value.created} / ~${staff.value.updated}`)
+      const r = staff.value
+      this.logger.log(`Staff: created=${r.created} updated=${r.updated} skipped=${r.skipped} total=${r.total}`)
     } else {
       this.logger.error('Staff sync failed', staff.reason)
     }
 
     if (docs.status === 'fulfilled') {
-      this.logger.log(`Student documents sync completed: ${docs.value}`)
+      this.logger.log(`Documents: synced=${docs.value}`)
     } else {
-      this.logger.error('Student documents sync failed', docs.reason)
+      this.logger.error('Documents sync failed', docs.reason)
     }
   }
 
   // ── Публічні методи синхронізації ────────────────────────────────
 
+  /**
+   * Синхронізує студентів з ЄДЕБО з підтримкою інкрементального оновлення.
+   *
+   * Інкрементальна логіка:
+   * - Читає `students_last_sync_at` з таблиці sync_state
+   * - Записи, у яких `modifyDate` відсутній або `modifyDate <= (lastSyncDate - 10хв)`, пропускаються
+   * - При пропуску не виконуються ні UPDATE у БД, ні виклик `getPersonDocumentsSync()`
+   * - `students_last_sync_at` оновлюється лише після повністю успішного завершення
+   * - При помилці дата не оновлюється — наступний запуск повторить обробку
+   *
+   * @param fromDate — опціональний ручний override дати (для адмін-панелі)
+   */
   public async syncStudents(fromDate?: string): Promise<SyncResult> {
     this.logger.log('Syncing students from ЄДЕБО...')
 
-    const result: SyncResult = { created: 0, updated: 0, total: 0 }
+    // Визначаємо поріг для інкрементальної sync
+    // Зберігаємо час початку обробки — це буде нова lastSyncDate після успіху
+    const syncStartedAt = new Date()
+    const thresholdDate = this.resolveThreshold(
+      fromDate ?? null,
+      await this.syncStateService.getDate(SYNC_KEYS.STUDENTS),
+    )
+
+    const result: SyncResult = { created: 0, updated: 0, skipped: 0, total: 0 }
     let pageNo = 0
 
     while (true) {
@@ -221,21 +258,8 @@ export class EdboSyncService {
         '/api/studentEducations/list',
         {
           universityId: this.universityId,
-          /*
-            Освітній ступінь
-              1 - Бакалавр
-              2 - Магістр
-              3 - Спеціаліст
-              4 - Молодший спеціаліст
-              5 - Кваліфікований робітник
-              6 - Молодший бакалавр
-              7 - Доктор філософії
-              8 - Доктор наук
-              9 - Фаховий молодший бакалавр
-              10 - Доктор мистецтва
-          */
-          qualificationGroupId: 9, // 9 = фаховий молодший бакалавр
-          historyFilterId: 1, // 1 = навчаються
+          qualificationGroupId: 9, // 9 = Фаховий молодший бакалавр
+          historyFilterId: 1,      // 1 = навчаються
           pageNo,
           pageSize: STUDENT_PAGE_SIZE,
         } satisfies EdboStudentListParams,
@@ -244,6 +268,16 @@ export class EdboSyncService {
       if (!records?.length) break
 
       for (const record of records) {
+        // ── Інкрементальний skip ───────────────────────────────────
+        // Якщо modifyDate відомий і не перевищує threshold — запис не змінився.
+        // Пропускаємо і DB-write, і виклик getPersonDocumentsSync().
+        if (thresholdDate && record.modifyDate) {
+          if (new Date(record.modifyDate) <= thresholdDate) {
+            result.skipped++
+            continue
+          }
+        }
+
         const existing = await this.prisma.student.findFirst({
           where: {
             personId: record.personId,
@@ -286,18 +320,106 @@ export class EdboSyncService {
     }
 
     this.logger.log(
-      `Students sync done: total=${result.total}, created=${result.created}, updated=${result.updated}`,
+      `Students sync done: total=${result.total}, created=${result.created}, updated=${result.updated}, skipped=${result.skipped}`,
     )
+
+    // Синхронізуємо групи на основі оновленого знімку студентів
+    const studentsSnapshot = await this.prisma.student.findMany({
+      where: { universityId: this.universityId },
+      select: { id: true, educationId: true, groupName: true, groupId: true },
+    })
+
+    const groupsResult = await this.groupsService.syncFromStudents(studentsSnapshot)
+    this.logger.log(
+      `Groups sync done: total=${groupsResult.total}, new=${groupsResult.created}, moves=${groupsResult.moves}`,
+    )
+
+    // Оновлюємо lastSyncDate тільки після повністю успішного завершення.
+    // Використовуємо syncStartedAt, а не "зараз", щоб не пропустити записи,
+    // змінені у ЄДЕБО під час тривалої обробки поточного sync.
+    await this.syncStateService.setDate(SYNC_KEYS.STUDENTS, syncStartedAt)
+
+    return result
+  }
+
+  /**
+   * Синхронізує викладачів (staff) з ЄДЕБО з підтримкою інкрементального оновлення.
+   *
+   * Інкрементальна логіка аналогічна syncStudents, але використовує
+   * `dateLastChange` замість `modifyDate` та ключ `staff_last_sync_at`.
+   *
+   * @param fromDate — опціональний ручний override дати (для адмін-панелі)
+   */
+  public async syncStaff(fromDate?: string): Promise<SyncResult> {
+    this.logger.log('Syncing staff from ЄДЕБО...')
+
+    const syncStartedAt = new Date()
+    const thresholdDate = this.resolveThreshold(
+      fromDate ?? null,
+      await this.syncStateService.getDate(SYNC_KEYS.STAFF),
+    )
+
+    const result: SyncResult = { created: 0, updated: 0, skipped: 0, total: 0 }
+    let pageNo = 0
+
+    while (true) {
+      const records = await this.edboService.post<EdboStaffRecord[]>(
+        '/api/university/staff/list',
+        {
+          universityId: this.universityId,
+          activeId: 1, // 1 = лише працюючі
+          pageNo,
+          pageSize: STAFF_PAGE_SIZE,
+        } satisfies EdboStaffListParams,
+      )
+
+      if (!records?.length) break
+
+      for (const record of records) {
+        // ── Інкрементальний skip ───────────────────────────────────
+        if (thresholdDate && record.dateLastChange) {
+          if (new Date(record.dateLastChange) <= thresholdDate) {
+            result.skipped++
+            continue
+          }
+        }
+
+        const existing = await this.prisma.teacher.findFirst({
+          where: { staffId: record.staffId },
+        })
+
+        if (existing) {
+          await this.prisma.teacher.update({
+            where: { id: existing.id },
+            data: this.mapStaffData(record),
+          })
+          result.updated++
+        } else {
+          await this.prisma.teacher.create({
+            data: this.mapStaffData(record),
+          })
+          result.created++
+        }
+      }
+
+      result.total += records.length
+
+      if (records.length < STAFF_PAGE_SIZE) break
+      pageNo++
+    }
+
+    this.logger.log(
+      `Staff sync done: total=${result.total}, created=${result.created}, updated=${result.updated}, skipped=${result.skipped}`,
+    )
+
+    await this.syncStateService.setDate(SYNC_KEYS.STAFF, syncStartedAt)
 
     return result
   }
 
   /**
    * Синхронізує документи студентів, що не мають їх у БД.
-   * Проходить по студентам без документів або з пустим документів,
-   * отримує їх з ЄДЕБО API та записує конкретні поля.
-   *
-   * @returns Кількість студентів, документи яких були синхронізовані
+   * Обробляє до 100 студентів за один запуск, щоб не перевантажувати ЄДЕБО API.
    */
   public async syncStudentDocuments(): Promise<number> {
     this.logger.log('Syncing student documents from ЄДЕБО...')
@@ -364,74 +486,22 @@ export class EdboSyncService {
     return synced
   }
 
-  public async syncStaff(fromDate?: string): Promise<SyncResult> {
-    this.logger.log('Syncing staff from ЄДЕБО...')
-
-    const result: SyncResult = { created: 0, updated: 0, total: 0 }
-    let pageNo = 0
-
-    while (true) {
-      const records = await this.edboService.post<EdboStaffRecord[]>(
-        '/api/university/staff/list',
-        {
-          universityId: this.universityId,
-          activeId: 1, // 1 = лише працюючі
-          pageNo,
-          pageSize: STAFF_PAGE_SIZE,
-        } satisfies EdboStaffListParams,
-      )
-
-      if (!records?.length) break
-
-      for (const record of records) {
-        const existing = await this.prisma.teacher.findFirst({
-          where: { staffId: record.staffId },
-        })
-
-        if (existing) {
-          await this.prisma.teacher.update({
-            where: { id: existing.id },
-            data: this.mapStaffData(record),
-          })
-          result.updated++
-        } else {
-          await this.prisma.teacher.create({
-            data: this.mapStaffData(record),
-          })
-          result.created++
-        }
-      }
-
-      result.total += records.length
-
-      if (records.length < STAFF_PAGE_SIZE) break
-      pageNo++
-    }
-
-    this.logger.log(
-      `Staff sync done: total=${result.total}, created=${result.created}, updated=${result.updated}`,
-    )
-
-    return result
-  }
-
   // ── Маппінг ───────────────────────────────────────────────────────
 
-  /**
-   * Витягує конкретні типи документів з масиву документів ЄДЕБО
-   * та відображає їх на поля Student моделі.
-   *
-   * @param documents Масив документів від ЄДЕБО API
-   * @returns Об'єкт з полями для збереження у БД
-   */
-  private extractDocumentFields(documents: any[]): {
+  private extractDocumentFields(documents: EdboPersonDocument[]): {
     rnokpp?: string
     passportSeries?: string
     passportNumbers?: string
     studentTicketSeries?: string
     studentTicketNumbers?: string
   } {
-    const result: any = {}
+    const result: {
+      rnokpp?: string
+      passportSeries?: string
+      passportNumbers?: string
+      studentTicketSeries?: string
+      studentTicketNumbers?: string
+    } = {}
 
     for (const doc of documents) {
       // 5 = РНОКПП
@@ -535,9 +605,18 @@ export class EdboSyncService {
 
   // ── Утиліти ───────────────────────────────────────────────────────
 
-  private getYesterdayIso(): string {
-    const date = new Date()
-    date.setDate(date.getDate() - 1)
-    return date.toISOString()
+  /**
+   * Обчислює поріг для інкрементального skip.
+   *
+   * Пріоритети:
+   * 1. Якщо передано ручний `fromDate` — використовуємо його без overlap
+   *    (адмін свідомо задає діапазон)
+   * 2. Якщо є збережений `lastSyncDate` — віднімаємо SYNC_OVERLAP_MS для надійності
+   * 3. Якщо sync запускається вперше — повертаємо null (обробляємо всі записи)
+   */
+  private resolveThreshold(fromDate: string | null, lastSyncDate: Date | null): Date | null {
+    if (fromDate) return new Date(fromDate)
+    if (lastSyncDate) return new Date(lastSyncDate.getTime() - SYNC_OVERLAP_MS)
+    return null
   }
 }

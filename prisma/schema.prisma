@@ -61,6 +61,26 @@ enum TokenType {
   PASSWORD_RESET // Password reset
 }
 
+/// Стан інкрементальної синхронізації з ЄДЕБО.
+/// Зберігає дату останнього успішного запуску кожного типу синхронізації.
+/// Ключі: students_last_sync_at, staff_last_sync_at
+model SyncState {
+  key       String   @id
+  value     String   // ISO 8601 рядок дати
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("sync_state")
+}
+
+/// Причина зміни групи студента
+enum GroupChangeReason {
+  EDEBO_SYNC       // Зміна виявлена при синхронізації, тип невизначений
+  COURSE_PROMOTION // Масове переведення на наступний курс
+  TRANSFER         // Переведення одного студента в іншу групу
+  MANUAL           // Ручне коригування адміністратором
+}
+
 /// Model for detailed student information
 model Student {
   id String @id @default(uuid())
@@ -104,7 +124,11 @@ model Student {
   professionInfo       String?   @map("profession_info")        // Кваліфікація
   courseId             Int?      @map("course_id")              // Курс (Id)
   courseName           String?   @map("course_name")            // Курс (назва)
-  groupName            String?   @map("group_name")             // Група
+  groupName            String?   @map("group_name")             // Назва групи (з ЄДЕБО, для порівняння)
+
+  // FK на Group — встановлюється після syncFromStudents
+  groupId String? @map("group_id")
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   // Відрахування / академвідпустка
   expelEducationTypeName String? @map("expel_education_type_name") // Причина відрахування
@@ -134,7 +158,48 @@ model Student {
   createdAt  DateTime  @default(now()) @map("created_at")
   modifyDate DateTime? @map("modify_date") // Дата останнього редагування в ЄДЕБО
 
+  groupHistory StudentGroupHistory[]
+
   @@map("students")
+}
+
+/// Academic group — derived from students' groupName field via ЄДЕБО sync.
+/// Created automatically during sync; cannot be created manually.
+/// Only curator assignment is stored here; all other metadata comes from students.
+model Group {
+  id   String @id @default(uuid())
+  name String @unique // groupName from students (ЄДЕБО)
+
+  curatorId String?  @unique @map("curator_id")
+  curator   Teacher? @relation(fields: [curatorId], references: [id], onDelete: SetNull)
+
+  students    Student[]
+  historyFrom StudentGroupHistory[] @relation("FromGroup")
+  historyTo   StudentGroupHistory[] @relation("ToGroup")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("groups")
+}
+
+/// Хронологія переміщень студента між групами
+model StudentGroupHistory {
+  id String @id @default(uuid())
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  fromGroupId String? @map("from_group_id")
+  fromGroup   Group?  @relation("FromGroup", fields: [fromGroupId], references: [id], onDelete: SetNull)
+
+  toGroupId String? @map("to_group_id")
+  toGroup   Group?  @relation("ToGroup", fields: [toGroupId], references: [id], onDelete: SetNull)
+
+  reason    GroupChangeReason @default(EDEBO_SYNC)
+  changedAt DateTime          @default(now()) @map("changed_at")
+
+  @@map("student_group_history")
 }
 
 /// Model for detailed teacher information (ЄДЕБО API: university/staff/list)
@@ -198,6 +263,7 @@ model Teacher {
   modifyDate DateTime? @map("modify_date") // Дата останньої зміни в ЄДЕБО
 
   classrooms Classroom[]
+  group      Group?
 
   @@map("teachers")
 }
@@ -210,9 +276,13 @@ model Classroom {
   name   String @unique // Classroom name (Scientific and natural sciences classroom, Software laboratory)
   photos Json   @default("[]") // Photos of the classroom (Up to 4 photos)
 
+  // Passport (PDF)
+  passportGoogleFileId String? @map("passport_google_file_id")
+  passportUrl          String? @map("passport_url")
+
   // Head of the classroom
   teacherId String?  @map("teacher_id")
-  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull) // The classroom should not disappear if the teacher is deleted
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")

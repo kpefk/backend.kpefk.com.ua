@@ -11,20 +11,24 @@ import {
   ParseFilePipe,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseInterceptors
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { UserRole } from '@prisma/client'
+import { Response } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
+
+import { GoogleDriveService } from '@/libs/google-drive/google-drive.service'
 
 import { ClassroomService } from './classroom.service'
 import { CreateClassroomDto } from './dto/create-classroom.dto'
 import { UpdateClassroomDto } from './dto/update-classroom.dto'
 import { ReorderPhotosDto } from './dto/reorder-photos.dto'
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger'
 
 /**
  * Controller for managing classrooms.
@@ -37,7 +41,10 @@ export class ClassroomController {
    * Constructor of the classroom controller.
    * @param classroomService - Service for working with classrooms.
    */
-  public constructor(private readonly classroomService: ClassroomService) {}
+  public constructor(
+    private readonly classroomService: ClassroomService,
+    private readonly googleDriveService: GoogleDriveService,
+  ) {}
 
   // ─── Basic CRUD operations ───────────────────────────────────────────────────
 
@@ -53,6 +60,39 @@ export class ClassroomController {
   @Get()
   public async findAll() {
     return this.classroomService.findAll()
+  }
+
+  /**
+   * Returns the classroom where the current user is the head (завідувач).
+   * Returns null if not assigned to any classroom.
+   */
+  @ApiOperation({ summary: 'Отримати свій кабінет (для завідувача)' })
+  @ApiResponse({ status: 200, description: 'Кабінет або null' })
+  @Authorization()
+  @HttpCode(HttpStatus.OK)
+  @Get('my')
+  public async findMy(@Authorized('id') userId: string) {
+    return this.classroomService.findMyClassroom(userId)
+  }
+
+  /**
+   * Proxies a classroom photo from Google Drive.
+   * Bypasses browser restrictions on embedding Shared Drive files.
+   * Public — no auth required so <img> tags load without credentials.
+   */
+  @ApiOperation({ summary: 'Проксі фото кабінету з Google Drive' })
+  @ApiParam({ name: 'googleFileId', description: 'ID файлу на Google Drive' })
+  @ApiResponse({ status: 200, description: 'Зображення' })
+  @ApiResponse({ status: 404, description: 'Файл не знайдено' })
+  @Get('photos/:googleFileId')
+  public async proxyPhoto(
+    @Param('googleFileId') googleFileId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, mimeType } = await this.googleDriveService.streamFile(googleFileId)
+    res.setHeader('Content-Type', mimeType)
+    res.setHeader('Cache-Control', 'public, max-age=86400') // кешуємо на 24год
+    ;(stream as NodeJS.ReadableStream).pipe(res)
   }
 
   /**
@@ -209,5 +249,61 @@ export class ClassroomController {
     @Authorized() currentUser: { id: string; role: UserRole }
   ) {
     return this.classroomService.reorderPhotos(id, dto, currentUser)
+  }
+
+  // ─── Passport (PDF) ────────────────────────────────────────────────────────
+
+  /**
+   * Proxies a classroom passport PDF from Google Drive (public, no auth).
+   */
+  @ApiOperation({ summary: 'Проксі паспорту кабінету (PDF)' })
+  @ApiParam({ name: 'googleFileId', description: 'ID файлу на Google Drive' })
+  @Get('passport/:googleFileId')
+  public async proxyPassport(
+    @Param('googleFileId') googleFileId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, mimeType } = await this.googleDriveService.streamFile(googleFileId)
+    res.setHeader('Content-Type', mimeType)
+    res.setHeader('Cache-Control', 'public, max-age=86400')
+    ;(stream as NodeJS.ReadableStream).pipe(res)
+  }
+
+  /**
+   * Uploads a PDF passport to the classroom subfolder on Google Drive.
+   */
+  @ApiOperation({ summary: 'Завантажити паспорт кабінету (PDF)' })
+  @Authorization(UserRole.ADMINISTRATOR, UserRole.TEACHER)
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/passport')
+  @UseInterceptors(FileInterceptor('file'))
+  public async uploadPassport(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 20 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /application\/pdf/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Authorized() currentUser: { id: string; role: UserRole },
+  ) {
+    return this.classroomService.uploadPassport(id, file, currentUser)
+  }
+
+  /**
+   * Deletes the classroom passport PDF.
+   */
+  @ApiOperation({ summary: 'Видалити паспорт кабінету' })
+  @Authorization(UserRole.ADMINISTRATOR, UserRole.TEACHER)
+  @HttpCode(HttpStatus.OK)
+  @Delete(':id/passport')
+  public async deletePassport(
+    @Param('id') id: string,
+    @Authorized() currentUser: { id: string; role: UserRole },
+  ) {
+    return this.classroomService.deletePassport(id, currentUser)
   }
 }

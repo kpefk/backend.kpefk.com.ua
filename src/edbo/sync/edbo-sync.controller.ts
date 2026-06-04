@@ -1,9 +1,9 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Roles } from '@/auth/decorators/roles.decorator'
-import { UserRole } from '@prisma/client'
 
 import { EdboSyncService, SyncResult } from './edbo-sync.service'
 import { SyncFilterDto } from './dto/sync-filter.dto'
@@ -31,7 +31,7 @@ export class EdboSyncController {
     return this.edboSyncService.syncStaff(dto.fromDate)
   }
 
-  @ApiOperation({ summary: 'Повна синхронізація (студенти + співробітники)' })
+  @ApiOperation({ summary: 'Повна синхронізація (студенти + викладачі + документи)' })
   @Post('all')
   @HttpCode(HttpStatus.OK)
   public syncAll(): Promise<void> {

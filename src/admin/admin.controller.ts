@@ -107,4 +107,20 @@ export class AdminController {
   public async deactivate(@Param('id') id: string): Promise<User> {
     return this.adminService.deactivate(id)
   }
+
+  @ApiOperation({ summary: 'Студенти без акаунту (для вибору при створенні)' })
+  @ApiResponse({ status: 200, description: 'Список незв\'язаних студентів' })
+  @Get('unlinked-students')
+  @HttpCode(HttpStatus.OK)
+  public async findUnlinkedStudents() {
+    return this.adminService.findUnlinkedStudents()
+  }
+
+  @ApiOperation({ summary: 'Викладачі без акаунту (для вибору при створенні)' })
+  @ApiResponse({ status: 200, description: 'Список незв\'язаних викладачів' })
+  @Get('unlinked-teachers')
+  @HttpCode(HttpStatus.OK)
+  public async findUnlinkedTeachers() {
+    return this.adminService.findUnlinkedTeachers()
+  }
 }

@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
 import { randomBytes } from 'crypto'
 
 import { MailService } from '@/libs/mail/mail.service'
+import { PrismaService } from '@/prisma/prisma.service'
 import { UserService } from '@/user/user.service'
 
 import { CreateUserDto } from './dto/create-user.dto'
@@ -20,7 +21,8 @@ export class AdminService {
    */
   public constructor(
     private readonly userService: UserService,
-    private readonly mailService: MailService
+    private readonly mailService: MailService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /**
@@ -52,18 +54,51 @@ export class AdminService {
     const existingUser = await this.userService.findByEmail(dto.email)
 
     if (existingUser) {
-      throw new ConflictException(
-        'Користувач з таким Email вже існує.'
-      )
+      throw new ConflictException('Користувач з таким Email вже існує.')
+    }
+
+    if (dto.role === UserRole.STUDENT) {
+      const student = await this.prisma.student.findUnique({ where: { id: dto.studentId } })
+      if (!student) throw new BadRequestException('Студента не знайдено.')
+      if (student.userId) throw new ConflictException('Цей студент вже прив\'язаний до іншого акаунту.')
+    }
+
+    if (dto.teacherId) {
+      const teacher = await this.prisma.teacher.findUnique({ where: { id: dto.teacherId } })
+      if (!teacher) throw new BadRequestException('Викладача не знайдено.')
+      if (teacher.userId) throw new ConflictException('Цей викладач вже прив\'язаний до іншого акаунту.')
     }
 
     const tempPassword = randomBytes(8).toString('hex')
-
     const user = await this.userService.create(dto.email, tempPassword, dto.role)
+
+    if (dto.role === UserRole.STUDENT && dto.studentId) {
+      await this.prisma.student.update({ where: { id: dto.studentId }, data: { userId: user.id } })
+    }
+
+    if (dto.teacherId) {
+      await this.prisma.teacher.update({ where: { id: dto.teacherId }, data: { userId: user.id } })
+    }
 
     await this.mailService.sendTempPassword(user.email, tempPassword)
 
     return user
+  }
+
+  public async findUnlinkedStudents() {
+    return this.prisma.student.findMany({
+      where: { userId: null },
+      select: { id: true, personFIO: true, groupName: true, courseName: true },
+      orderBy: { personFIO: 'asc' },
+    })
+  }
+
+  public async findUnlinkedTeachers() {
+    return this.prisma.teacher.findMany({
+      where: { userId: null },
+      select: { id: true, lastName: true, firstName: true, middleName: true, positionName: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
   }
 
   /**

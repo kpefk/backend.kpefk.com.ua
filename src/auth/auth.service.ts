@@ -7,7 +7,7 @@ import {
   UnauthorizedException
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { User } from '@prisma/client'
+import { User, UserRole } from '@prisma/client'
 import { hash, verify } from 'argon2'
 import { Request, Response } from 'express'
 
@@ -20,6 +20,7 @@ import { LoginDto } from './dto/login.dto'
 import { RegisterStudentDto } from './dto/register-student.dto'
 import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service'
 import { UserEntity } from '@/user/entities/user.entity'
+import { StudentProfileEntity } from './entities/student-profile.entity'
 
 @Injectable()
 export class AuthService {
@@ -346,6 +347,24 @@ export class AuthService {
         resolve()
       })
     })
+  }
+
+  /**
+   * Returns the profile of the current user.
+   * For STUDENT role returns extended academic and personal data;
+   * for all other roles returns the base profile.
+   * @param userId - The authenticated user's ID.
+   * @returns UserEntity or StudentProfileEntity depending on role.
+   */
+  public async getProfile(userId: string): Promise<UserEntity | StudentProfileEntity> {
+    const user = await this.userService.findById(userId)
+
+    if (user.role !== UserRole.STUDENT) {
+      return new UserEntity(user)
+    }
+
+    const studentUser = await this.userService.findByIdWithStudentProfile(userId)
+    return new StudentProfileEntity(studentUser)
   }
 
   /**

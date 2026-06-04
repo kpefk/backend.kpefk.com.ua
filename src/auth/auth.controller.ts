@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -15,6 +16,9 @@ import { AuthService } from './auth.service'
 import { LoginDto } from './dto/login.dto'
 import { UserEntity } from '@/user/entities/user.entity'
 import { RegisterStudentDto } from './dto/register-student.dto'
+import { Authorization } from './decorators/auth.decorator'
+import { Authorized } from './decorators/authorized.decorator'
+import { StudentProfileEntity } from './entities/student-profile.entity'
 
 /**
  * Контролер для автентифікації користувачів.
@@ -27,6 +31,25 @@ export class AuthController {
    * @param authService - Сервіс для роботи з автентифікацією.
    */
   public constructor(private readonly authService: AuthService) {}
+
+  /**
+   * Повертає профіль поточного авторизованого користувача.
+   * Для ролі STUDENT повертає розширені академічні та особисті дані.
+   * @param userId - ID авторизованого користувача.
+   * @returns UserEntity або StudentProfileEntity залежно від ролі.
+   */
+  @ApiOperation({ summary: 'Отримати профіль поточного користувача' })
+  @ApiBearerAuth('access-token')
+  @ApiResponse({ status: 200, description: 'Профіль успішно отримано', type: UserEntity })
+  @ApiResponse({ status: 401, description: 'Не авторизований' })
+  @Authorization()
+  @HttpCode(HttpStatus.OK)
+  @Get('profile')
+  public async profile(
+    @Authorized('id') userId: string
+  ): Promise<UserEntity | StudentProfileEntity> {
+    return this.authService.getProfile(userId)
+  }
 
   /**
    * Виконує вхід користувача в систему.

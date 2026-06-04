@@ -1,10 +1,13 @@
 import { DynamicModule, Module } from '@nestjs/common'
 
+import { UserModule } from '@/user/user.module'
+
 import {
 	ProviderOptionsSymbol,
 	TypeAsyncOptions,
 	TypeOptions
 } from './provider.constants'
+import { OAuthController } from './oauth.controller'
 import { ProviderService } from './provider.service'
 
 /**
@@ -12,45 +15,33 @@ import { ProviderService } from './provider.service'
  */
 @Module({})
 export class ProviderModule {
-	/**
-	 * Registers the provider module with synchronous options.
-	 *
-	 * @param options - Provider options containing the base URL and services.
-	 * @returns Dynamic provider module.
-	 */
 	public static register(options: TypeOptions): DynamicModule {
 		return {
 			module: ProviderModule,
+			imports: [UserModule],
+			controllers: [OAuthController],
 			providers: [
-				{
-					useValue: options,
-					provide: ProviderOptionsSymbol
-				},
-				ProviderService
+				{ useValue: options, provide: ProviderOptionsSymbol },
+				ProviderService,
 			],
-			exports: [ProviderService]
+			exports: [ProviderService],
 		}
 	}
 
-	/**
-	 * Registers the provider module with asynchronous options.
-	 *
-	 * @param options - Asynchronous provider options containing imports and factory functions.
-	 * @returns Dynamic provider module.
-	 */
 	public static registerAsync(options: TypeAsyncOptions): DynamicModule {
 		return {
 			module: ProviderModule,
-			imports: options.imports,
+			imports: [...(options.imports ?? []), UserModule],
+			controllers: [OAuthController],
 			providers: [
 				{
 					useFactory: options.useFactory,
 					provide: ProviderOptionsSymbol,
-					inject: options.inject
+					inject: options.inject,
 				},
-				ProviderService
+				ProviderService,
 			],
-			exports: [ProviderService]
+			exports: [ProviderService],
 		}
 	}
 }

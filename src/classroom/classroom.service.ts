@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException
 } from '@nestjs/common'
 import { Prisma, UserRole } from '@prisma/client'
@@ -28,11 +29,8 @@ function parsePhotos(raw: unknown): ClassroomPhoto[] {
 
 @Injectable()
 export class ClassroomService {
-  /**
-   * Constructor of the classroom service.
-   * @param prismaService - Service for working with the Prisma database.
-   * @param googleDriveService - Service for working with Google Drive.
-   */
+  private readonly logger = new Logger(ClassroomService.name)
+
   public constructor(
     private readonly prismaService: PrismaService,
     private readonly googleDriveService: GoogleDriveService
@@ -108,6 +106,23 @@ export class ClassroomService {
   }
 
   /**
+   * Returns the classroom where the current user is the head (завідувач).
+   * Returns null if the user is not assigned to any classroom.
+   */
+  public async findMyClassroom(userId: string) {
+    const teacher = await this.prismaService.teacher.findUnique({
+      where: { userId },
+    })
+
+    if (!teacher) return null
+
+    return this.prismaService.classroom.findFirst({
+      where: { teacherId: teacher.id },
+      include: { teacher: true },
+    })
+  }
+
+  /**
    * Creates a new classroom (available only to the administrator).
    * The list of photos is initialized as an empty array.
    * @param dto - Data for creating a classroom.
@@ -159,9 +174,18 @@ export class ClassroomService {
     const classroom = await this.findById(id)
     const photos = parsePhotos(classroom.photos)
 
-    // Видаляємо всі фото з Google Drive паралельно
+    // Збираємо всі файли для видалення: фото + паспорт
+    const fileIds = [
+      ...photos.map(p => p.googleFileId),
+      ...(classroom.passportGoogleFileId ? [classroom.passportGoogleFileId] : []),
+    ]
+
     await Promise.all(
-      photos.map(photo => this.googleDriveService.deleteFile(photo.googleFileId))
+      fileIds.map(fileId =>
+        this.googleDriveService.deleteFile(fileId).catch(err => {
+          this.logger.error(`Failed to delete Drive file ${fileId}:`, err)
+        })
+      )
     )
 
     return this.prismaService.classroom.delete({ where: { id } })
@@ -187,21 +211,59 @@ export class ClassroomService {
     const photos = parsePhotos(classroom.photos)
 
     if (photos.length >= MAX_PHOTOS) {
-      throw new BadRequestException(
-        `Максимальна кількість фото — ${MAX_PHOTOS}.`
-      )
+      throw new BadRequestException(`Максимальна кількість фото — ${MAX_PHOTOS}.`)
     }
 
-    const { url, googleFileId } = await this.googleDriveService.uploadFile(file)
+    const { url, googleFileId } = await this.googleDriveService.uploadPhoto(file, classroom.number)
 
     const updatedPhotos: ClassroomPhoto[] = [
       ...photos,
-      { url, googleFileId, order: photos.length }
+      { url, googleFileId, order: photos.length },
     ]
 
     return this.prismaService.classroom.update({
       where: { id },
-      data: { photos: updatedPhotos as unknown as Prisma.InputJsonValue }
+      data: { photos: updatedPhotos as unknown as Prisma.InputJsonValue },
+    })
+  }
+
+  public async uploadPassport(
+    id: string,
+    file: Express.Multer.File,
+    currentUser: { id: string; role: UserRole }
+  ) {
+    const classroom = await this.checkEditAccess(id, currentUser)
+
+    // Видаляємо старий паспорт якщо є
+    if (classroom.passportGoogleFileId) {
+      await this.googleDriveService.deleteFile(classroom.passportGoogleFileId).catch(err => {
+        this.logger.error(`Failed to delete old passport ${classroom.passportGoogleFileId}:`, err)
+      })
+    }
+
+    const { url, googleFileId } = await this.googleDriveService.uploadPassport(file, classroom.number)
+
+    return this.prismaService.classroom.update({
+      where: { id },
+      data: { passportGoogleFileId: googleFileId, passportUrl: url },
+    })
+  }
+
+  public async deletePassport(
+    id: string,
+    currentUser: { id: string; role: UserRole }
+  ) {
+    const classroom = await this.checkEditAccess(id, currentUser)
+
+    if (!classroom.passportGoogleFileId) {
+      throw new BadRequestException('Паспорт кабінету відсутній.')
+    }
+
+    await this.googleDriveService.deleteFile(classroom.passportGoogleFileId)
+
+    return this.prismaService.classroom.update({
+      where: { id },
+      data: { passportGoogleFileId: null, passportUrl: null },
     })
   }
 

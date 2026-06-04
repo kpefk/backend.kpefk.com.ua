@@ -87,6 +87,41 @@ export class UserService {
   }
 
   /**
+   * Знаходить користувача за ID з повними даними студента.
+   * @param {string} id - ID користувача.
+   * @returns Знайдений користувач з розширеними полями студента.
+   * @throws {NotFoundException} Якщо користувача не знайдено.
+   */
+  public async findByIdWithStudentProfile(id: string) {
+    const user = await this.prismaService.user.findUnique({
+      where: { id },
+      include: {
+        student: {
+          select: {
+            personFIO: true,
+            birthday: true,
+            groupName: true,
+            educationFormName: true,
+            courseName: true,
+            budgetTransferCategoryName: true,
+            qualificationGroupName: true,
+            studyProgramName: true,
+            educationDateBegin: true
+          }
+        }
+      }
+    })
+
+    if (!user) {
+      throw new NotFoundException(
+        'Користувача не знайдено. Будь ласка, перевірте введені дані.'
+      )
+    }
+
+    return user
+  }
+
+  /**
    * Створює нового користувача.
    * @param email - Email користувача.
    * @param password - Пароль користувача (вже захешований або тимчасовий).
@@ -183,7 +218,23 @@ export class UserService {
 	 */
 	public async findAll() {
 	return this.prismaService.user.findMany({
-		orderBy: { createdAt: 'desc' }
+		orderBy: { createdAt: 'desc' },
+		include: {
+			student: {
+				select: {
+					personFIO: true,
+					groupName: true,
+				}
+			},
+			teacher: {
+				select: {
+					lastName: true,
+					firstName: true,
+					middleName: true,
+					positionName: true,
+				}
+			}
+		}
 	})
 	}
 
