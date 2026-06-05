@@ -8,6 +8,28 @@ import { GroupsService } from '@/groups/groups.service'
 
 import { SyncStateService, SYNC_KEYS } from './sync-state.service'
 
+// ── Типи відповіді ЄДЕБО API: освітні програми ───────────────────
+
+interface EdboStudyProgramRecord {
+  universityStudyProgramId: number
+  studyProgramName: string
+  studyProgramNameEn: string | null
+  qualificationGroupId: number | null
+  qualificationGroupName: string | null
+  specialityId: number | null
+  specialityName: string | null
+  universitySpecializationId: number | null
+  specializationName: string | null
+  isBlocked: boolean
+  dateLastChange: string | null
+}
+
+interface EdboStudyProgramListParams {
+  universityId: number
+  pageNo: number
+  pageSize: number
+}
+
 // ── Типи відповіді ЄДЕБО API ──────────────────────────────────────
 
 interface EdboStudentRecord {
@@ -484,6 +506,154 @@ export class EdboSyncService {
 
     this.logger.log(`Student documents sync done: ${synced}/${studentsWithoutDocs.length}`)
     return synced
+  }
+
+  // ── Синхронізація освітніх програм ──────────────────────────────
+
+  /** Розмір сторінки для universityStudyPrograms/list */
+  private static readonly STUDY_PROGRAM_PAGE_SIZE = 100
+
+  /**
+   * Синхронізує освітні програми з ЄДЕБО до локальної БД.
+   *
+   * Логіка:
+   * - Запитує `POST /api/universityStudyPrograms/list` з universityId з EDEBO_CODE
+   * - Для кожного запису визначає або створює відповідну локальну Specialty
+   *   (за edeboSpecialityId → за назвою → новий запис)
+   * - Upsert EducationalProgram за стабільним ЄДЕБО-ключем universityStudyProgramId
+   * - Помічає syncedAt після кожного запису
+   */
+  public async syncStudyPrograms(): Promise<SyncResult> {
+    this.logger.log('Syncing study programs (ОПП) from ЄДЕБО...')
+
+    const result: SyncResult = { created: 0, updated: 0, skipped: 0, total: 0 }
+    let pageNo = 0
+
+    while (true) {
+      const records = await this.edboService.post<EdboStudyProgramRecord[]>(
+        '/api/universityStudyPrograms/list',
+        {
+          universityId: this.universityId,
+          pageNo,
+          pageSize: EdboSyncService.STUDY_PROGRAM_PAGE_SIZE,
+        } satisfies EdboStudyProgramListParams,
+      )
+
+      if (!records?.length) break
+
+      for (const record of records) {
+        // Resolve or create matching Specialty
+        const specialtyId = await this.resolveSpecialtyForStudyProgram(record)
+
+        if (!specialtyId) {
+          this.logger.warn(
+            `Cannot resolve specialty for program ${record.universityStudyProgramId} ` +
+            `(specialityId=${record.specialityId}, name="${record.specialityName}") — skipping.`,
+          )
+          result.skipped++
+          continue
+        }
+
+        const programData = {
+          specialtyId,
+          name: record.studyProgramName,
+          studyProgramNameEn: record.studyProgramNameEn ?? null,
+          qualificationName: record.qualificationGroupName ?? record.studyProgramName,
+          qualificationLevel: record.qualificationGroupName ?? null,
+          qualificationGroupId: record.qualificationGroupId ?? null,
+          universitySpecializationId: record.universitySpecializationId ?? null,
+          specializationName: record.specializationName ?? null,
+          isActive: !record.isBlocked,
+          syncedAt: new Date(),
+        }
+
+        const existing = await this.prisma.educationalProgram.findUnique({
+          where: { edeboId: record.universityStudyProgramId },
+        })
+
+        if (existing) {
+          await this.prisma.educationalProgram.update({
+            where: { id: existing.id },
+            data: programData,
+          })
+          result.updated++
+        } else {
+          await this.prisma.educationalProgram.create({
+            data: {
+              ...programData,
+              edeboId: record.universityStudyProgramId,
+            },
+          })
+          result.created++
+        }
+      }
+
+      result.total += records.length
+      if (records.length < EdboSyncService.STUDY_PROGRAM_PAGE_SIZE) break
+      pageNo++
+    }
+
+    this.logger.log(
+      `Study programs sync done: total=${result.total}, created=${result.created}, ` +
+      `updated=${result.updated}, skipped=${result.skipped}`,
+    )
+
+    return result
+  }
+
+  /**
+   * Знаходить або створює запис Specialty для освітньої програми з ЄДЕБО.
+   *
+   * Пріоритети:
+   * 1. Точний збіг за edeboSpecialityId
+   * 2. Точний збіг за назвою (case-insensitive) → оновлює edeboSpecialityId якщо відсутній
+   * 3. Створення нового запису з кодом `EDEBO-{specialityId}`
+   * 4. null — якщо немає ані specialityId, ані specialityName для ідентифікації
+   */
+  private async resolveSpecialtyForStudyProgram(
+    record: EdboStudyProgramRecord,
+  ): Promise<string | null> {
+    const { specialityId, specialityName } = record
+
+    // 1. Пошук за ЄДЕБО-кодом спеціальності
+    if (specialityId !== null && specialityId !== undefined) {
+      const byEdeboId = await this.prisma.specialty.findFirst({
+        where: { edeboSpecialityId: specialityId },
+      })
+      if (byEdeboId) return byEdeboId.id
+    }
+
+    // 2. Пошук за назвою (для вже засіяних спеціальностей)
+    if (specialityName) {
+      const byName = await this.prisma.specialty.findFirst({
+        where: { name: { equals: specialityName, mode: 'insensitive' } },
+      })
+      if (byName) {
+        // Прив'язуємо edeboSpecialityId до знайденої локальної спеціальності
+        if (specialityId !== null && specialityId !== undefined && !byName.edeboSpecialityId) {
+          await this.prisma.specialty.update({
+            where: { id: byName.id },
+            data: { edeboSpecialityId: specialityId },
+          })
+        }
+        return byName.id
+      }
+    }
+
+    // 3. Створюємо новий запис якщо є достатньо даних
+    if (specialityId !== null && specialityId !== undefined && specialityName) {
+      const created = await this.prisma.specialty.create({
+        data: {
+          code: `EDEBO-${specialityId}`,
+          name: specialityName,
+          edeboSpecialityId: specialityId,
+          isActive: true,
+        },
+      })
+      return created.id
+    }
+
+    return null
   }
 
   // ── Маппінг ───────────────────────────────────────────────────────

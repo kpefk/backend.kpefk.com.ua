@@ -20,6 +20,7 @@ import { StaffModule } from './staff/staff.module';
 import { EdboSyncModule } from './edbo/sync/edbo-sync.module'
 import { ScheduleModule } from '@nestjs/schedule'
 import { GroupsModule } from './groups/groups.module'
+import { CurriculumModule } from './curriculum/curriculum.module'
 
 @Module({
 	imports: [
@@ -45,6 +46,7 @@ import { GroupsModule } from './groups/groups.module'
 		StudentModule,
 		StaffModule,
 		GroupsModule,
+		CurriculumModule,
 	]
 })
 export class AppModule {}

@@ -31,6 +31,14 @@ export class EdboSyncController {
     return this.edboSyncService.syncStaff(dto.fromDate)
   }
 
+  @ApiOperation({ summary: 'Синхронізація освітніх програм (ОПП) з ЄДЕБО' })
+  @ApiResponse({ status: 200, description: 'Результат синхронізації' })
+  @Post('study-programs')
+  @HttpCode(HttpStatus.OK)
+  public syncStudyPrograms(): Promise<SyncResult> {
+    return this.edboSyncService.syncStudyPrograms()
+  }
+
   @ApiOperation({ summary: 'Повна синхронізація (студенти + викладачі + документи)' })
   @Post('all')
   @HttpCode(HttpStatus.OK)

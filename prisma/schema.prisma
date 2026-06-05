@@ -160,6 +160,10 @@ model Student {
 
   groupHistory StudentGroupHistory[]
 
+  // Curriculum domain (back-relations — no new columns)
+  individualPlan     StudentIndividualPlan?
+  electiveSelections StudentElectiveSelection[]
+
   @@map("students")
 }
 
@@ -176,6 +180,10 @@ model Group {
   students    Student[]
   historyFrom StudentGroupHistory[] @relation("FromGroup")
   historyTo   StudentGroupHistory[] @relation("ToGroup")
+
+  // Curriculum domain (back-relations — no new columns)
+  curriculumAssignments        GroupCurriculumAssignment[]
+  workingCurriculumAssignments GroupWorkingCurriculumAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -269,6 +277,9 @@ model Teacher {
 }
 
 /// Model for classrooms
+// ── Curriculum domain relations added below ──────────────────────────────────
+// Group and Student are extended with back-relations only (no new columns).
+
 model Classroom {
   id String @id @default(uuid())
 
@@ -288,4 +299,523 @@ model Classroom {
   updatedAt DateTime @updatedAt      @map("updated_at")
 
   @@map("classrooms")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                        CURRICULUM DOMAIN                                    ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/// Форма здобуття освіти
+enum EducationForm {
+  FULL_TIME // Денна
+  PART_TIME // Заочна
+  DUAL      // Дуальна
+}
+
+/// Підстава для вступу (рівень базової освіти)
+enum AdmissionBasis {
+  AFTER_9TH_GRADE  // На основі 9 класів (базова середня освіта)
+  AFTER_11TH_GRADE // На основі 11 класів (повна загальна середня освіта)
+}
+
+/// Тип розділу навчального плану
+enum CurriculumSectionType {
+  SECONDARY_EDUCATION     // Блок загальної середньої освіти (ЗСО)
+  GENERAL_COMPETENCY      // Компоненти загальних компетентностей ОПП
+  PROFESSIONAL_COMPETENCY // Компоненти фахових компетентностей ОПП
+  ELECTIVE                // Вибіркова частина (ВК)
+  PRACTICE                // Практична підготовка
+  ATTESTATION             // Атестація здобувачів ФПО
+}
+
+/// Тип освітнього компонента
+enum ComponentType {
+  DISCIPLINE                 // Навчальна дисципліна
+  PRACTICE                   // Практика
+  COURSE_WORK                // Курсова робота
+  COURSE_PROJECT             // Курсовий проект
+  DIPLOMA_PROJECT            // Дипломне проектування
+  QUALIFICATION_WORK_DEFENSE // Захист кваліфікаційної роботи
+  QUALIFICATION_EXAM         // Кваліфікаційний іспит
+  STATE_EXAM                 // Державний іспит / ЄДКІ / НМТ / ЗНО
+}
+
+/// Форма підсумкового контролю в семестрі
+enum ControlForm {
+  EXAM                // Екзамен
+  TEST                // Залік
+  DIFFERENTIATED_TEST // Диференційований залік
+  COURSE_WORK         // Курсова робота
+  COURSE_PROJECT      // Курсовий проект
+  NONE                // Без підсумкового контролю (розподільчий рядок)
+}
+
+/// Вид практики
+enum PracticeType {
+  EDUCATIONAL    // Навчальна практика
+  TECHNOLOGICAL  // Технологічна / виробнича практика
+  PRE_GRADUATION // Переддипломна практика
+}
+
+/// Тип тижня в графіку навчального процесу
+enum CalendarWeekType {
+  INSTRUCTION       // Теоретичне навчання
+  EXAM_SESSION      // Екзаменаційна сесія
+  PRACTICE          // Практика
+  HOLIDAY           // Канікули
+  NATIONAL_HOLIDAY  // Святкові дні
+  STATE_ATTESTATION // Державна підсумкова атестація (ЗНО / НМТ)
+  GRADUATION_WORK   // Дипломне проектування / кваліфікаційна робота
+  DEFENSE           // Захист КР / кваліфікаційний іспит
+}
+
+/// Тип відхилення в індивідуальному навчальному плані
+enum IndividualPlanDeviationType {
+  ELECTIVE_SELECTION   // Вибір вибіркового компонента
+  RETAKE               // Перездача
+  EXTENDED_DEADLINE    // Продовження терміну
+  TRANSFERRED_CREDIT   // Перезарахований кредит
+  EXEMPTED             // Звільнення від компонента
+  ACCELERATED          // Прискорене освоєння
+  ADDITIONAL_COMPONENT // Додатковий компонент
+}
+
+// ─── Core: Specialty ──────────────────────────────────────────────────────────
+
+/// Спеціальність (ліцензована одиниця, наприклад: F3 Комп'ютерні науки)
+model Specialty {
+  id        String  @id @default(uuid())
+  code      String  @unique          // "F3", "D3", "073"
+  name      String                   // "Комп'ютерні науки"
+  shortName String? @map("short_name")
+  isActive  Boolean @default(true) @map("is_active")
+
+  /// Код спеціальності в ЄДЕБО (universityStudyPrograms.specialityId).
+  /// Заповнюється під час синхронізації освітніх програм.
+  edeboSpecialityId Int? @unique @map("edebo_speciality_id")
+
+  programs EducationalProgram[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("specialties")
+}
+
+// ─── Core: Educational Program (OPP) ─────────────────────────────────────────
+
+/// Освітньо-професійна програма (ОПП).
+/// Одна ОПП може породжувати декілька навчальних планів (по формі, базі, року).
+model EducationalProgram {
+  id                  String    @id @default(uuid())
+  specialtyId         String    @map("specialty_id")
+  specialty           Specialty @relation(fields: [specialtyId], references: [id])
+
+  name                String            // "Комп'ютерні науки"
+  qualificationName   String            @map("qualification_name")   // "Фаховий молодший бакалавр з комп'ютерних наук"
+  qualificationLevel  String?           @map("qualification_level")  // "Фаховий молодший бакалавр"
+  edeboId             Int?    @unique   @map("edebo_id")             // universityStudyProgramId з ЄДЕБО
+  approvalDate        DateTime?         @map("approval_date")
+  approvalOrderNumber String?           @map("approval_order_number")
+  isActive            Boolean @default(true) @map("is_active")
+  notes               String?
+
+  // ── Поля, заповнювані при синхронізації з ЄДЕБО ──────────────────────────
+  studyProgramNameEn         String?   @map("study_program_name_en")
+  qualificationGroupId       Int?      @map("qualification_group_id")
+  universitySpecializationId Int?      @map("university_specialization_id")
+  specializationName         String?   @map("specialization_name")
+  /// Час останньої успішної синхронізації з ЄДЕБО
+  syncedAt                   DateTime? @map("synced_at")
+
+  curricula Curriculum[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([specialtyId])
+  @@map("educational_programs")
+}
+
+// ─── Core: Curriculum ─────────────────────────────────────────────────────────
+
+/// Навчальний план — контейнер версій.
+/// Унікальний для (ОПП × форма навчання × база освіти × рік вступу).
+model Curriculum {
+  id                  String             @id @default(uuid())
+  programId           String             @map("program_id")
+  program             EducationalProgram @relation(fields: [programId], references: [id])
+
+  educationForm       EducationForm  @map("education_form")
+  admissionBasis      AdmissionBasis @map("admission_basis")
+  entryYear           Int            @map("entry_year")
+  studyDurationMonths Int            @map("study_duration_months")
+  totalEcts           Decimal        @map("total_ects") @db.Decimal(6, 2)
+  isActive            Boolean        @default(true) @map("is_active")
+  notes               String?
+
+  versions         CurriculumVersion[]
+  groupAssignments GroupCurriculumAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([programId, educationForm, admissionBasis, entryYear])
+  @@index([programId])
+  @@index([entryYear])
+  @@map("curricula")
+}
+
+// ─── Core: Curriculum Version ─────────────────────────────────────────────────
+
+/// Версія навчального плану.
+/// Після публікації (isPublished = true) нормативні поля незмінні.
+/// Виправлення вносяться через нову версію, а не перезапис.
+model CurriculumVersion {
+  id                  String     @id @default(uuid())
+  curriculumId        String     @map("curriculum_id")
+  curriculum          Curriculum @relation(fields: [curriculumId], references: [id])
+
+  versionNumber       Int      @map("version_number")
+  approvalDate        DateTime @map("approval_date")
+  approvalOrderNumber String   @map("approval_order_number")
+  approvedBy          String   @map("approved_by")
+  isPublished         Boolean  @default(false) @map("is_published")
+  publishedAt         DateTime? @map("published_at")
+  deprecatedAt        DateTime? @map("deprecated_at") // null = ще актуальна
+  notes               String?
+
+  sections          CurriculumSection[]
+  timeBudgetEntries TimeBudgetEntry[]
+  calendarEntries   AcademicCalendarEntry[]
+  workingCurricula  WorkingCurriculum[]
+  groupAssignments  GroupCurriculumAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([curriculumId, versionNumber])
+  @@index([curriculumId])
+  @@map("curriculum_versions")
+}
+
+// ─── Structure: Section ───────────────────────────────────────────────────────
+
+/// Розділ навчального плану (блок ЗСО, цикл загальної підготовки тощо)
+model CurriculumSection {
+  id          String            @id @default(uuid())
+  versionId   String            @map("version_id")
+  version     CurriculumVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  code         String?               // "ЗСО", "ЦЗП", "ЦФП"
+  name         String
+  orderIndex   Int                   @map("order_index")
+  sectionType  CurriculumSectionType @map("section_type")
+  subtotalEcts Decimal?              @map("subtotal_ects") @db.Decimal(6, 2)
+
+  components     CurriculumComponent[]
+  electiveBlocks ElectiveBlock[]
+
+  @@index([versionId])
+  @@map("curriculum_sections")
+}
+
+// ─── Structure: Elective Block ────────────────────────────────────────────────
+
+/// Блок вибіркових компонентів (студент вибирає N з M варіантів у семестрі)
+model ElectiveBlock {
+  id            String            @id @default(uuid())
+  sectionId     String            @map("section_id")
+  section       CurriculumSection @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  name           String // "Блок вільного вибору 4 семестр"
+  semesterNumber Int    @map("semester_number")
+  minSelections  Int    @default(1) @map("min_selections")
+  maxSelections  Int    @default(1) @map("max_selections")
+  orderIndex     Int    @map("order_index")
+
+  options           CurriculumComponent[]
+  groupSelections   GroupElectiveSelection[]
+  studentSelections StudentElectiveSelection[]
+
+  @@index([sectionId])
+  @@map("elective_blocks")
+}
+
+// ─── Structure: Component ─────────────────────────────────────────────────────
+
+/// Освітній компонент навчального плану
+model CurriculumComponent {
+  id        String            @id @default(uuid())
+  sectionId String            @map("section_id")
+  section   CurriculumSection @relation(fields: [sectionId], references: [id], onDelete: Restrict)
+
+  // Для вибіркових компонентів — посилання на блок
+  electiveBlockId String?        @map("elective_block_id")
+  electiveBlock   ElectiveBlock? @relation(fields: [electiveBlockId], references: [id])
+
+  code          String?       // "ОК1", "ВК1"
+  name          String
+  componentType ComponentType @map("component_type")
+  totalEcts     Decimal       @map("total_ects") @db.Decimal(6, 2)
+  totalHours    Int           @map("total_hours")
+  orderIndex    Int           @map("order_index")
+  isMandatory   Boolean       @default(true) @map("is_mandatory")
+
+  practiceType PracticeType? @map("practice_type") // лише для PRACTICE-типу
+
+  courseWorkCount    Int @default(0) @map("course_work_count")
+  courseProjectCount Int @default(0) @map("course_project_count")
+
+  notes String?
+
+  terms             CurriculumComponentTerm[]
+  planItems         StudentIndividualPlanItem[]
+  groupSelections   GroupElectiveSelection[]
+  studentSelections StudentElectiveSelection[]
+
+  @@index([sectionId])
+  @@index([electiveBlockId])
+  @@map("curriculum_components")
+}
+
+// ─── Structure: Component Term ────────────────────────────────────────────────
+
+/// Розподіл компонента по семестру — ЄКТС, години, форма контролю
+model CurriculumComponentTerm {
+  id          String              @id @default(uuid())
+  componentId String              @map("component_id")
+  component   CurriculumComponent @relation(fields: [componentId], references: [id], onDelete: Restrict)
+
+  semesterNumber   Int         @map("semester_number")
+  ects             Decimal     @db.Decimal(6, 2)
+  hours            Int
+  controlForm      ControlForm @map("control_form")
+  hasCourseWork    Boolean     @default(false) @map("has_course_work")
+  hasCourseProject Boolean     @default(false) @map("has_course_project")
+
+  workingTerms WorkingCurriculumComponentTerm[]
+
+  @@unique([componentId, semesterNumber])
+  @@index([componentId])
+  @@map("curriculum_component_terms")
+}
+
+// ─── Structure: Time Budget ───────────────────────────────────────────────────
+
+/// Зведені дані бюджету часу (верифікаційна таблиця плану)
+model TimeBudgetEntry {
+  id        String            @id @default(uuid())
+  versionId String            @map("version_id")
+  version   CurriculumVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  label      String           // "Аудиторних годин", "Самостійна робота"
+  totalHours Int              @map("total_hours")
+  totalEcts  Decimal?         @map("total_ects") @db.Decimal(6, 2)
+  orderIndex Int              @map("order_index")
+
+  @@index([versionId])
+  @@map("time_budget_entries")
+}
+
+// ─── Structure: Academic Calendar ─────────────────────────────────────────────
+
+/// Графік навчального процесу: тиждень → тип тижня
+model AcademicCalendarEntry {
+  id        String            @id @default(uuid())
+  versionId String            @map("version_id")
+  version   CurriculumVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  courseNumber   Int              @map("course_number")
+  semesterNumber Int              @map("semester_number")
+  weekNumber     Int              @map("week_number")
+  weekType       CalendarWeekType @map("week_type")
+
+  @@unique([versionId, courseNumber, semesterNumber, weekNumber])
+  @@index([versionId])
+  @@map("academic_calendar_entries")
+}
+
+// ─── Operational: Group Curriculum Assignment ─────────────────────────────────
+
+/// Нормативне прив'язування групи до версії навчального плану.
+/// Зберігається повна historія — записи не видаляються, а закриваються.
+model GroupCurriculumAssignment {
+  id           String            @id @default(uuid())
+  groupId      String            @map("group_id")
+  group        Group             @relation(fields: [groupId], references: [id])
+  curriculumId String            @map("curriculum_id")
+  curriculum   Curriculum        @relation(fields: [curriculumId], references: [id])
+  versionId    String            @map("version_id")
+  version      CurriculumVersion @relation(fields: [versionId], references: [id])
+
+  effectiveFrom  DateTime  @map("effective_from")
+  effectiveUntil DateTime? @map("effective_until") // null = активне прив'язання
+  isActive       Boolean   @default(true) @map("is_active")
+  assignedBy     String?   @map("assigned_by")     // userId
+  reason         String?                            // причина призначення
+
+  electiveSelections   GroupElectiveSelection[]
+  workingAssignments   GroupWorkingCurriculumAssignment[]
+  studentPlans         StudentIndividualPlan[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([groupId, isActive])
+  @@index([versionId])
+  @@map("group_curriculum_assignments")
+}
+
+// ─── Operational: Working Curriculum ─────────────────────────────────────────
+
+/// Робочий навчальний план — операційний шар для конкретного навчального року.
+/// Один на (версія плану × навчальний рік).
+model WorkingCurriculum {
+  id           String            @id @default(uuid())
+  versionId    String            @map("version_id")
+  version      CurriculumVersion @relation(fields: [versionId], references: [id])
+
+  academicYear    String  @map("academic_year")    // "2024-2025"
+  semesterNumbers Int[]   @map("semester_numbers") // наприклад [3, 4]
+  isApproved      Boolean @default(false) @map("is_approved")
+  approvedAt      DateTime? @map("approved_at")
+  notes           String?
+
+  componentTerms   WorkingCurriculumComponentTerm[]
+  groupAssignments GroupWorkingCurriculumAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([versionId, academicYear])
+  @@index([versionId])
+  @@map("working_curricula")
+}
+
+// ─── Operational: Working Curriculum Component Term ───────────────────────────
+
+/// Розбивка годин за видами роботи для конкретного робочого плану
+model WorkingCurriculumComponentTerm {
+  id                  String                  @id @default(uuid())
+  workingCurriculumId String                  @map("working_curriculum_id")
+  workingCurriculum   WorkingCurriculum        @relation(fields: [workingCurriculumId], references: [id], onDelete: Cascade)
+  componentTermId     String                  @map("component_term_id")
+  componentTerm       CurriculumComponentTerm @relation(fields: [componentTermId], references: [id], onDelete: Restrict)
+
+  lectureHours      Int @default(0) @map("lecture_hours")
+  practicalHours    Int @default(0) @map("practical_hours")
+  labHours          Int @default(0) @map("lab_hours")
+  seminarHours      Int @default(0) @map("seminar_hours")
+  independentHours  Int @default(0) @map("independent_hours")
+  consultationHours Int @default(0) @map("consultation_hours")
+
+  weeklyLectureHours   Decimal? @map("weekly_lecture_hours")   @db.Decimal(4, 1)
+  weeklyPracticalHours Decimal? @map("weekly_practical_hours") @db.Decimal(4, 1)
+
+  @@unique([workingCurriculumId, componentTermId])
+  @@index([workingCurriculumId])
+  @@map("working_curriculum_component_terms")
+}
+
+// ─── Operational: Group Working Curriculum Assignment ─────────────────────────
+
+/// Прив'язування групи до робочого навчального плану на навчальний рік.
+/// Унікальність: одна група — один робочий план на рік.
+model GroupWorkingCurriculumAssignment {
+  id                  String            @id @default(uuid())
+  groupId             String            @map("group_id")
+  group               Group             @relation(fields: [groupId], references: [id])
+  workingCurriculumId String            @map("working_curriculum_id")
+  workingCurriculum   WorkingCurriculum @relation(fields: [workingCurriculumId], references: [id])
+  assignmentId        String            @map("assignment_id")
+  assignment          GroupCurriculumAssignment @relation(fields: [assignmentId], references: [id])
+
+  academicYear String  @map("academic_year")
+  isActive     Boolean @default(true) @map("is_active")
+  assignedBy   String? @map("assigned_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([groupId, academicYear])
+  @@index([workingCurriculumId])
+  @@map("group_working_curriculum_assignments")
+}
+
+// ─── Electives ────────────────────────────────────────────────────────────────
+
+/// Вибір вибіркового компонента на рівні групи (загальний вибір)
+model GroupElectiveSelection {
+  id           String                    @id @default(uuid())
+  blockId      String                    @map("block_id")
+  block        ElectiveBlock             @relation(fields: [blockId], references: [id])
+  componentId  String                    @map("component_id")
+  component    CurriculumComponent       @relation(fields: [componentId], references: [id])
+  assignmentId String                    @map("assignment_id")
+  assignment   GroupCurriculumAssignment @relation(fields: [assignmentId], references: [id])
+
+  selectedAt DateTime @default(now()) @map("selected_at")
+  selectedBy String?  @map("selected_by") // userId
+
+  @@unique([blockId, assignmentId])
+  @@index([assignmentId])
+  @@map("group_elective_selections")
+}
+
+/// Індивідуальний вибір вибіркового компонента студентом (override групового)
+model StudentElectiveSelection {
+  id          String              @id @default(uuid())
+  blockId     String              @map("block_id")
+  block       ElectiveBlock       @relation(fields: [blockId], references: [id])
+  componentId String              @map("component_id")
+  component   CurriculumComponent @relation(fields: [componentId], references: [id])
+  studentId   String              @map("student_id")
+  student     Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  overrideReason String?  @map("override_reason")
+  selectedAt     DateTime @default(now()) @map("selected_at")
+
+  @@unique([blockId, studentId])
+  @@index([studentId])
+  @@map("student_elective_selections")
+}
+
+// ─── Student Individual Plan ──────────────────────────────────────────────────
+
+/// Індивідуальний навчальний план студента (похідний від групового)
+model StudentIndividualPlan {
+  id           String                    @id @default(uuid())
+  studentId    String                    @unique @map("student_id")
+  student      Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignmentId String                    @map("assignment_id")
+  assignment   GroupCurriculumAssignment @relation(fields: [assignmentId], references: [id])
+
+  isActive   Boolean   @default(true) @map("is_active")
+  notes      String?
+  approvedAt DateTime? @map("approved_at")
+  approvedBy String?   @map("approved_by")
+
+  items StudentIndividualPlanItem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("student_individual_plans")
+}
+
+/// Запис відхилення в індивідуальному навчальному плані студента
+model StudentIndividualPlanItem {
+  id             String                @id @default(uuid())
+  planId         String                @map("plan_id")
+  plan           StudentIndividualPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  componentId    String                @map("component_id")
+  component      CurriculumComponent   @relation(fields: [componentId], references: [id], onDelete: Restrict)
+  semesterNumber Int                   @map("semester_number")
+
+  deviationType IndividualPlanDeviationType @map("deviation_type")
+  notes         String?
+  resolvedAt    DateTime? @map("resolved_at")
+
+  @@index([planId])
+  @@map("student_individual_plan_items")
 }
