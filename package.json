@@ -41,6 +41,7 @@
     "@prisma/client": "^7.8.0",
     "@react-email/components": "^1.0.9",
     "@react-email/html": "^0.0.12",
+    "@types/qrcode": "^1.5.6",
     "argon2": "^0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
@@ -49,8 +50,12 @@
     "express-session": "^1.19.0",
     "googleapis": "^171.4.0",
     "ioredis": "^5.10.0",
+    "otplib": "^12.0.1",
     "pg": "^8.20.0",
     "prisma": "^7.8.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "redis": "^5.11.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
@@ -99,7 +104,12 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/$1",
+      "^@prisma/__generated__$": "<rootDir>/../prisma/__generated__/index",
+      "^@prisma/__generated__/(.*)$": "<rootDir>/../prisma/__generated__/$1"
+    }
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

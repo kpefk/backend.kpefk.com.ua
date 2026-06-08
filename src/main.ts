@@ -1,5 +1,6 @@
 import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common'
 import { NestFactory, Reflector } from '@nestjs/core'
+import { DecimalSerializerInterceptor } from './libs/common/interceptors/decimal-serializer.interceptor'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import { RedisStore } from 'connect-redis'
@@ -44,8 +45,19 @@ async function bootstrap() {
     })
   )
 
-  // Global serialization (@Exclude / @Expose on entity classes)
-  app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)))
+  // Global serialization:
+  //   1. ClassSerializerInterceptor — @Exclude / @Expose on entity classes.
+  //   2. DecimalSerializerInterceptor — converts Prisma Decimal instances to
+  //      "X.XX" strings before ClassSerializerInterceptor's instanceToPlain
+  //      can turn them into internal {d,e,s} objects.
+  //
+  // NestJS outgoing-response order: last registered → runs first.
+  // DecimalSerializer is registered last, so it fires first on the response,
+  // giving ClassSerializer only plain JS values to process.
+  app.useGlobalInterceptors(
+    new ClassSerializerInterceptor(app.get(Reflector)),
+    new DecimalSerializerInterceptor(),
+  )
 
   // Swagger documentation
   const swaggerConfig = new DocumentBuilder()

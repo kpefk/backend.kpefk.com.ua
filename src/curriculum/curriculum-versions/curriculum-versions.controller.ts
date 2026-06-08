@@ -22,6 +22,7 @@ import { Authorization } from '@/auth/decorators/auth.decorator'
 
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto'
 import { CreateComponentDto } from './dto/create-component.dto'
+import { CreateComponentProjectionDto } from './dto/create-component-projection.dto'
 import { CreateComponentTermDto } from './dto/create-component-term.dto'
 import { CreateCurriculumVersionDto } from './dto/create-curriculum-version.dto'
 import { CreateElectiveBlockDto } from './dto/create-elective-block.dto'
@@ -197,6 +198,35 @@ export class CurriculumVersionsController {
   @Authorization(...WRITE_ROLES)
   public deleteComponent(@Param('componentId') componentId: string) {
     return this.versionsService.deleteComponent(componentId)
+  }
+
+  // ── Component Display Projections ─────────────────────────────────────────
+
+  @ApiOperation({ summary: 'Додати відображення компонента в додатковий розділ (інтеграційна проекція)' })
+  @ApiParam({ name: 'versionId', description: 'UUID версії навчального плану' })
+  @ApiResponse({ status: 201 })
+  @ApiResponse({ status: 400, description: 'Той самий розділ, крос-версійна проекція, версія опублікована або дублікат' })
+  @Post('curriculum-versions/:versionId/component-projections')
+  @HttpCode(HttpStatus.CREATED)
+  @Authorization(...WRITE_ROLES)
+  public createProjection(
+    @Param('versionId') versionId: string,
+    @Body() dto: CreateComponentProjectionDto,
+  ) {
+    return this.versionsService.createProjection(versionId, dto)
+  }
+
+  @ApiOperation({ summary: 'Видалити інтеграційну проекцію компонента' })
+  @ApiParam({ name: 'projectionId', description: 'UUID проекції' })
+  @ApiResponse({ status: 200 })
+  @ApiResponse({ status: 400, description: 'Версія опублікована' })
+  @ApiResponse({ status: 404, description: 'Проекцію не знайдено' })
+  @Delete('curriculum-component-projections/:projectionId')
+  @HttpCode(HttpStatus.OK)
+  @Authorization(...WRITE_ROLES)
+  public async deleteProjection(@Param('projectionId') projectionId: string) {
+    await this.versionsService.deleteProjection(projectionId)
+    return { deleted: true }
   }
 
   // ── Component Terms ───────────────────────────────────────────────────────

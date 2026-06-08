@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { UserRole } from '@prisma/client'
+import { TwoFactorMethod, UserRole } from '@prisma/client'
 import { Exclude, Expose } from 'class-transformer'
 
 export class UserEntity {
@@ -14,13 +14,20 @@ export class UserEntity {
   @Exclude()
   password!: string
 
+  @Exclude()
+  totpSecret?: string | null
+
   @ApiProperty({ description: 'Роль користувача', enum: UserRole, example: UserRole.STUDENT })
   @Expose()
   role!: UserRole
 
-  @ApiProperty({ description: 'Чи увімкнена двофакторна автентифікація', example: false })
+  @ApiProperty({ description: 'Чи увімкнена двофакторна автентифікація (legacy)', example: false })
   @Expose()
   isTwoFactorEnabled!: boolean
+
+  @ApiProperty({ description: 'Метод двофакторної автентифікації', enum: TwoFactorMethod })
+  @Expose()
+  twoFactorMethod!: TwoFactorMethod
 
   @ApiProperty({ description: 'Чи є перший вхід в систему', example: true })
   @Expose()

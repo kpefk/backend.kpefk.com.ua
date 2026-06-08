@@ -1,5 +1,5 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { ControlForm } from '@prisma/client'
+import { ApiPropertyOptional } from '@nestjs/swagger'
+import { TermControlForm } from '@prisma/client'
 import {
   IsBoolean,
   IsEnum,
@@ -11,26 +11,40 @@ import {
 } from 'class-validator'
 
 export class CreateComponentTermDto {
-  @ApiProperty({ description: 'Номер семестру', example: 3 })
+  @ApiPropertyOptional({ description: 'Номер семестру', example: 3 })
   @IsInt()
   @Min(1)
   @Max(12)
   semesterNumber!: number
 
-  @ApiProperty({ description: 'ЄКТС за семестр', example: 4.5 })
+  @ApiPropertyOptional({ description: 'ЄКТС за семестр (необовʼязково; якщо не передано — зберігається 0)', example: 4.5 })
+  @IsOptional()
   @IsNumber()
   @Min(0)
   @Max(30)
-  ects!: number
+  ects?: number
 
-  @ApiProperty({ description: 'Годин за семестр', example: 135 })
+  @ApiPropertyOptional({ description: 'Годин за семестр', example: 135 })
   @IsInt()
   @Min(0)
   hours!: number
 
-  @ApiProperty({ enum: ControlForm, description: 'Форма підсумкового контролю' })
-  @IsEnum(ControlForm, { message: 'Невалідна форма контролю.' })
-  controlForm!: ControlForm
+  @ApiPropertyOptional({
+    description: 'Годин на тиждень (знаменник у "34/2")',
+    example: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  hoursPerWeek?: number
+
+  @ApiPropertyOptional({
+    enum: TermControlForm,
+    description: 'Форма підсумкового контролю (null = не вказано)',
+  })
+  @IsOptional()
+  @IsEnum(TermControlForm, { message: 'Невалідна форма контролю.' })
+  controlForm?: TermControlForm
 
   @ApiPropertyOptional({ description: 'Наявність курсової роботи', default: false })
   @IsOptional()

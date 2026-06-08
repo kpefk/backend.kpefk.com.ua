@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { ComponentType, PracticeType } from '@prisma/client'
+import { ComponentType, CurriculumComponentType, PracticeType } from '@prisma/client'
 import {
   IsBoolean,
   IsEnum,
@@ -36,16 +36,26 @@ export class CreateComponentDto {
   @IsEnum(ComponentType, { message: 'Невалідний тип компонента.' })
   componentType!: ComponentType
 
+  @ApiPropertyOptional({
+    enum: CurriculumComponentType,
+    description: 'Укрупнена категорія компонента',
+    default: CurriculumComponentType.REGULAR,
+  })
+  @IsOptional()
+  @IsEnum(CurriculumComponentType, { message: 'Невалідна категорія компонента.' })
+  componentKind?: CurriculumComponentType
+
   @ApiProperty({ description: 'ЄКТС кредитів', example: 12.0 })
   @IsNumber()
   @Min(0)
   @Max(999)
   totalEcts!: number
 
-  @ApiProperty({ description: 'Загальна кількість годин', example: 360 })
+  @ApiPropertyOptional({ description: 'Загальна кількість годин (розраховується як totalEcts × 30 якщо не передано)', example: 360 })
+  @IsOptional()
   @IsInt()
   @Min(0)
-  totalHours!: number
+  totalHours?: number
 
   @ApiProperty({ description: 'Порядок виведення', example: 1 })
   @IsInt()
@@ -78,4 +88,70 @@ export class CreateComponentDto {
   @IsOptional()
   @IsString()
   notes?: string
+
+  // ── Розподіл годин ─────────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({ description: 'Аудиторні години (загалом)', example: 180 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  auditoryHours?: number
+
+  @ApiPropertyOptional({ description: 'Лекційні години', example: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  lectureHours?: number
+
+  @ApiPropertyOptional({ description: 'Практичні заняття (год.)', example: 60 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  practicalHours?: number
+
+  @ApiPropertyOptional({ description: 'Семінарські заняття (год.)', example: 30 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  seminarHours?: number
+
+  @ApiPropertyOptional({ description: 'Лабораторні роботи (год.)', example: 30 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  labHours?: number
+
+  @ApiPropertyOptional({ description: 'Самостійна робота (год.)', example: 90 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  selfStudyHours?: number
+
+  @ApiPropertyOptional({ description: 'Інші години (консультації тощо)', example: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  otherHours?: number
+
+  @ApiPropertyOptional({
+    description: 'Підготовка до ЗНО (тільки для блоку ЗСО)',
+    example: 12,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  znoPreparationHours?: number
+
+  // ── Вибіркова група ────────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({ description: 'Код вибіркової групи', example: 'ВК1' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  groupCode?: string
+
+  @ApiPropertyOptional({ description: 'UUID батьківського компонента (для альтернатив)' })
+  @IsOptional()
+  @IsUUID('4')
+  parentComponentId?: string
 }

@@ -10,6 +10,7 @@ import { PrismaService } from '@/prisma/prisma.service'
 
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto'
 import { CreateComponentDto } from './dto/create-component.dto'
+import { CreateComponentProjectionDto } from './dto/create-component-projection.dto'
 import { CreateComponentTermDto } from './dto/create-component-term.dto'
 import { CreateCurriculumVersionDto } from './dto/create-curriculum-version.dto'
 import { CreateElectiveBlockDto } from './dto/create-elective-block.dto'
@@ -56,7 +57,16 @@ export class CurriculumVersionsService {
   // ── Version CRUD ──────────────────────────────────────────────────────────
 
   /**
-   * Повертає повну структуру версії плану зі всіма секціями, компонентами та розподілами.
+   * Повертає повну структуру версії плану зі всіма секціями, компонентами, розподілами
+   * та інтеграційними проекціями компонентів.
+   *
+   * Реалізація використовує два запити:
+   *   1. Основний запит — вся структура версії (розділи, компоненти, терміни).
+   *   2. Запит проекцій — усі display projections для компонентів цієї версії.
+   *
+   * Далі в сервісному шарі формуємо масив displayRows для кожного розділу:
+   * канонічні компоненти (countsInTotals = true) + проекційні рядки (countsInTotals = false).
+   * Жодних дублікатів у БД — лише мережа відображень.
    */
   public async findById(id: string) {
     const version = await this.prisma.curriculumVersion.findUnique({
@@ -92,7 +102,56 @@ export class CurriculumVersionsService {
     })
 
     if (!version) throw new NotFoundException('Версію навчального плану не знайдено.')
-    return version
+
+    // Load all display projections for components belonging to this version.
+    // Filter path: projection.component → section → version ensures same-version guarantee.
+    const projections = await this.prisma.curriculumComponentDisplayInSection.findMany({
+      where: { component: { section: { versionId: id } } },
+      include: {
+        component: {
+          include: { terms: { orderBy: { semesterNumber: 'asc' } } },
+        },
+      },
+      orderBy: { displayOrder: 'asc' },
+    })
+
+    // Group projections by their target section so we can append them below.
+    const projsBySection = new Map<string, typeof projections>()
+    for (const p of projections) {
+      const list = projsBySection.get(p.sectionId) ?? []
+      list.push(p)
+      projsBySection.set(p.sectionId, list)
+    }
+
+    // Augment each section: canonical components first, projected display-rows appended.
+    // Projection rows carry the canonical data with extra flags so the frontend can
+    // distinguish display-only rows from count-in-totals canonical rows.
+    const enrichedSections = version.sections.map((sec) => {
+      const canonicalRows = sec.components.map((c) => ({
+        ...c,
+        isProjected: false as const,
+        sourceSectionId: null as string | null,
+        countsInTotals: true as const,
+        displayMarker: null as string | null,
+        displayNote: null as string | null,
+        projectionId: null as string | null,
+      }))
+
+      const projectedRows = (projsBySection.get(sec.id) ?? []).map((p) => ({
+        ...p.component,
+        isProjected: true as const,
+        // sourceSectionId = the canonical home section of this component
+        sourceSectionId: p.component.sectionId,
+        countsInTotals: false as const,
+        displayMarker: p.displayMarker,
+        displayNote: p.displayNote,
+        projectionId: p.id,
+      }))
+
+      return { ...sec, components: [...canonicalRows, ...projectedRows] }
+    })
+
+    return { ...version, sections: enrichedSections }
   }
 
   /**
@@ -295,6 +354,10 @@ export class CurriculumVersionsService {
         },
       })
 
+      // Track old→new ID mappings for projections copy below
+      const sectionIdMap = new Map<string, string>()
+      const componentIdMap = new Map<string, string>()
+
       for (const section of source.sections) {
         const newSection = await tx.curriculumSection.create({
           data: {
@@ -306,6 +369,7 @@ export class CurriculumVersionsService {
             subtotalEcts: section.subtotalEcts,
           },
         })
+        sectionIdMap.set(section.id, newSection.id)
 
         // Спочатку копіюємо блоки вибіркових компонентів
         const blockIdMap = new Map<string, string>()
@@ -333,6 +397,7 @@ export class CurriculumVersionsService {
               code: component.code,
               name: component.name,
               componentType: component.componentType,
+              componentKind: component.componentKind,
               totalEcts: component.totalEcts,
               totalHours: component.totalHours,
               orderIndex: component.orderIndex,
@@ -341,8 +406,21 @@ export class CurriculumVersionsService {
               courseWorkCount: component.courseWorkCount,
               courseProjectCount: component.courseProjectCount,
               notes: component.notes,
+              // Hours breakdown
+              auditoryHours: component.auditoryHours,
+              lectureHours: component.lectureHours,
+              practicalHours: component.practicalHours,
+              seminarHours: component.seminarHours,
+              labHours: component.labHours,
+              selfStudyHours: component.selfStudyHours,
+              otherHours: component.otherHours,
+              znoPreparationHours: component.znoPreparationHours,
+              // Elective group
+              groupCode: component.groupCode,
+              // parentComponentId intentionally not copied — hierarchy must be rebuilt by the user
             },
           })
+          componentIdMap.set(component.id, newComponent.id)
 
           for (const term of component.terms) {
             await tx.curriculumComponentTerm.create({
@@ -351,12 +429,35 @@ export class CurriculumVersionsService {
                 semesterNumber: term.semesterNumber,
                 ects: term.ects,
                 hours: term.hours,
+                hoursPerWeek: term.hoursPerWeek,
                 controlForm: term.controlForm,
                 hasCourseWork: term.hasCourseWork,
                 hasCourseProject: term.hasCourseProject,
               },
             })
           }
+        }
+      }
+
+      // Copy display projections, remapping component and section IDs to their new counterparts.
+      // Projections whose component or target section couldn't be mapped are silently skipped
+      // (should not happen in practice since all sections/components are copied above).
+      const sourceProjections = await tx.curriculumComponentDisplayInSection.findMany({
+        where: { component: { section: { versionId: source.id } } },
+      })
+      for (const proj of sourceProjections) {
+        const newComponentId = componentIdMap.get(proj.componentId)
+        const newSectionId = sectionIdMap.get(proj.sectionId)
+        if (newComponentId && newSectionId) {
+          await tx.curriculumComponentDisplayInSection.create({
+            data: {
+              componentId: newComponentId,
+              sectionId: newSectionId,
+              displayOrder: proj.displayOrder,
+              displayMarker: proj.displayMarker,
+              displayNote: proj.displayNote,
+            },
+          })
         }
       }
 
@@ -437,16 +538,20 @@ export class CurriculumVersionsService {
     if (!section) throw new NotFoundException('Розділ не знайдено.')
     assertDraft(section.version)
 
-    const componentCount = await this.prisma.curriculumComponent.count({
+    // Cascade: terms → components → section (all FK-restricted, must delete in order)
+    const components = await this.prisma.curriculumComponent.findMany({
       where: { sectionId },
+      select: { id: true },
     })
-    if (componentCount > 0) {
-      throw new BadRequestException(
-        'Неможливо видалити розділ, що містить компоненти. Спочатку видаліть всі компоненти.',
-      )
-    }
+    const componentIds = components.map((c) => c.id)
 
-    return this.prisma.curriculumSection.delete({ where: { id: sectionId } })
+    return this.prisma.$transaction([
+      this.prisma.curriculumComponentTerm.deleteMany({
+        where: { componentId: { in: componentIds } },
+      }),
+      this.prisma.curriculumComponent.deleteMany({ where: { sectionId } }),
+      this.prisma.curriculumSection.delete({ where: { id: sectionId } }),
+    ])
   }
 
   // ── Elective Blocks ───────────────────────────────────────────────────────
@@ -498,17 +603,34 @@ export class CurriculumVersionsService {
       data: {
         sectionId,
         electiveBlockId: dto.electiveBlockId ?? null,
-        code: dto.code?.trim() ?? null,
+        code: dto.code?.trim() || null,
         name: dto.name.trim(),
         componentType: dto.componentType,
+        componentKind: dto.componentKind ?? 'REGULAR',
         totalEcts: dto.totalEcts,
-        totalHours: dto.totalHours,
+        // Derive hours from ECTS (1 ECTS = 30 h). For secondary-edu components
+        // totalEcts arrives as 0 and totalHours is set manually by the user.
+        totalHours: Number(dto.totalEcts) > 0
+          ? Math.round(Number(dto.totalEcts) * 30)
+          : (dto.totalHours ?? 0),
         orderIndex: dto.orderIndex,
         isMandatory: dto.isMandatory ?? true,
         practiceType: dto.practiceType ?? null,
         courseWorkCount: dto.courseWorkCount ?? 0,
         courseProjectCount: dto.courseProjectCount ?? 0,
         notes: dto.notes ?? null,
+        // Hours breakdown
+        auditoryHours: dto.auditoryHours ?? null,
+        lectureHours: dto.lectureHours ?? null,
+        practicalHours: dto.practicalHours ?? null,
+        seminarHours: dto.seminarHours ?? null,
+        labHours: dto.labHours ?? null,
+        selfStudyHours: dto.selfStudyHours ?? null,
+        otherHours: dto.otherHours ?? null,
+        znoPreparationHours: dto.znoPreparationHours ?? null,
+        // Elective group
+        groupCode: dto.groupCode?.trim() ?? null,
+        parentComponentId: dto.parentComponentId ?? null,
       },
       include: { terms: true },
     })
@@ -529,11 +651,22 @@ export class CurriculumVersionsService {
     return this.prisma.curriculumComponent.update({
       where: { id: componentId },
       data: {
-        ...(dto.code !== undefined && { code: dto.code?.trim() ?? null }),
+        ...(dto.code !== undefined && { code: dto.code?.trim() || null }),
         ...(dto.name !== undefined && { name: dto.name.trim() }),
         ...(dto.componentType !== undefined && { componentType: dto.componentType }),
-        ...(dto.totalEcts !== undefined && { totalEcts: dto.totalEcts }),
-        ...(dto.totalHours !== undefined && { totalHours: dto.totalHours }),
+        ...(dto.componentKind !== undefined && { componentKind: dto.componentKind }),
+        // When totalEcts changes, derive totalHours (1 ECTS = 30 h).
+        // Secondary-edu components have totalEcts = 0; in that case honour
+        // the explicitly supplied totalHours (manual entry from the form).
+        ...(dto.totalEcts !== undefined && {
+          totalEcts: dto.totalEcts,
+          totalHours: Number(dto.totalEcts) > 0
+            ? Math.round(Number(dto.totalEcts) * 30)
+            : (dto.totalHours !== undefined ? dto.totalHours : Number(component.totalHours)),
+        }),
+        // Independent totalHours update only when totalEcts was NOT changed
+        // (e.g. secondary-edu edit where only hours need adjusting).
+        ...(dto.totalHours !== undefined && dto.totalEcts === undefined && { totalHours: dto.totalHours }),
         ...(dto.orderIndex !== undefined && { orderIndex: dto.orderIndex }),
         ...(dto.isMandatory !== undefined && { isMandatory: dto.isMandatory }),
         ...(dto.practiceType !== undefined && { practiceType: dto.practiceType ?? null }),
@@ -541,6 +674,18 @@ export class CurriculumVersionsService {
         ...(dto.courseProjectCount !== undefined && { courseProjectCount: dto.courseProjectCount }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.electiveBlockId !== undefined && { electiveBlockId: dto.electiveBlockId ?? null }),
+        // Hours breakdown
+        ...(dto.auditoryHours !== undefined && { auditoryHours: dto.auditoryHours ?? null }),
+        ...(dto.lectureHours !== undefined && { lectureHours: dto.lectureHours ?? null }),
+        ...(dto.practicalHours !== undefined && { practicalHours: dto.practicalHours ?? null }),
+        ...(dto.seminarHours !== undefined && { seminarHours: dto.seminarHours ?? null }),
+        ...(dto.labHours !== undefined && { labHours: dto.labHours ?? null }),
+        ...(dto.selfStudyHours !== undefined && { selfStudyHours: dto.selfStudyHours ?? null }),
+        ...(dto.otherHours !== undefined && { otherHours: dto.otherHours ?? null }),
+        ...(dto.znoPreparationHours !== undefined && { znoPreparationHours: dto.znoPreparationHours ?? null }),
+        // Elective group
+        ...(dto.groupCode !== undefined && { groupCode: dto.groupCode?.trim() ?? null }),
+        ...(dto.parentComponentId !== undefined && { parentComponentId: dto.parentComponentId ?? null }),
       },
       include: { terms: true },
     })
@@ -558,7 +703,102 @@ export class CurriculumVersionsService {
     if (!component) throw new NotFoundException('Компонент не знайдено.')
     assertDraft(component.section.version)
 
-    return this.prisma.curriculumComponent.delete({ where: { id: componentId } })
+    // Delete terms first (FK: curriculum_component_terms.component_id → curriculum_components.id)
+    return this.prisma.$transaction([
+      this.prisma.curriculumComponentTerm.deleteMany({ where: { componentId } }),
+      this.prisma.curriculumComponent.delete({ where: { id: componentId } }),
+    ])
+  }
+
+  // ── Component Display Projections ────────────────────────────────────────
+
+  /**
+   * Додає відображення компонента в додатковий розділ (інтеграційна проекція).
+   *
+   * Інваріанти:
+   *   • Компонент і цільовий розділ повинні належати до тієї самої версії (versionId).
+   *   • Цільовий розділ ≠ основний розділ компонента.
+   *   • Версія повинна бути чернеткою (не опублікованою).
+   *   • Пара (componentId, sectionId) унікальна — перевіряється constraint.
+   */
+  public async createProjection(versionId: string, dto: CreateComponentProjectionDto) {
+    // Load canonical component and verify it belongs to this version
+    const component = await this.prisma.curriculumComponent.findUnique({
+      where: { id: dto.componentId },
+      include: {
+        section: { select: { id: true, versionId: true } },
+      },
+    })
+    if (!component) throw new NotFoundException('Компонент не знайдено.')
+    if (component.section.versionId !== versionId) {
+      throw new BadRequestException(
+        'Компонент не належить до вказаної версії навчального плану.',
+      )
+    }
+
+    // Load target section and verify same version + draft status
+    const targetSection = await this.prisma.curriculumSection.findUnique({
+      where: { id: dto.targetSectionId },
+      include: { version: { select: { isPublished: true, versionNumber: true } } },
+    })
+    if (!targetSection) throw new NotFoundException('Цільовий розділ не знайдено.')
+    if (targetSection.versionId !== versionId) {
+      throw new BadRequestException(
+        'Цільовий розділ не належить до вказаної версії навчального плану.',
+      )
+    }
+    assertDraft(targetSection.version)
+
+    // Cannot project into the component's own primary section
+    if (dto.targetSectionId === component.sectionId) {
+      throw new BadRequestException(
+        'Неможливо створити проекцію компонента в його основний розділ.',
+      )
+    }
+
+    // Create projection (unique constraint on (componentId, sectionId) prevents duplicates)
+    try {
+      return await this.prisma.curriculumComponentDisplayInSection.create({
+        data: {
+          componentId: dto.componentId,
+          sectionId: dto.targetSectionId,
+          displayOrder: dto.displayOrder ?? 0,
+          displayMarker: dto.displayMarker?.trim() ?? null,
+          displayNote: dto.displayNote?.trim() ?? null,
+        },
+      })
+    } catch (e: unknown) {
+      // P2002 = unique constraint violation
+      if ((e as { code?: string }).code === 'P2002') {
+        throw new BadRequestException(
+          'Проекцію цього компонента в обраний розділ вже існує.',
+        )
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Видаляє інтеграційну проекцію компонента.
+   * Версія повинна бути чернеткою — опублікована версія незмінна.
+   */
+  public async deleteProjection(projectionId: string): Promise<void> {
+    const projection = await this.prisma.curriculumComponentDisplayInSection.findUnique({
+      where: { id: projectionId },
+      include: {
+        component: {
+          include: {
+            section: {
+              include: { version: { select: { isPublished: true, versionNumber: true } } },
+            },
+          },
+        },
+      },
+    })
+    if (!projection) throw new NotFoundException('Проекцію не знайдено.')
+    assertDraft(projection.component.section.version)
+
+    await this.prisma.curriculumComponentDisplayInSection.delete({ where: { id: projectionId } })
   }
 
   // ── Component Terms ───────────────────────────────────────────────────────
@@ -600,9 +840,10 @@ export class CurriculumVersionsService {
       data: {
         componentId,
         semesterNumber: dto.semesterNumber,
-        ects: dto.ects,
+        ects: dto.ects ?? 0,
         hours: dto.hours,
-        controlForm: dto.controlForm,
+        hoursPerWeek: dto.hoursPerWeek ?? null,
+        controlForm: dto.controlForm ?? null,
         hasCourseWork: dto.hasCourseWork ?? false,
         hasCourseProject: dto.hasCourseProject ?? false,
       },
@@ -644,6 +885,7 @@ export class CurriculumVersionsService {
       data: {
         ...(dto.ects !== undefined && { ects: dto.ects }),
         ...(dto.hours !== undefined && { hours: dto.hours }),
+        ...(dto.hoursPerWeek !== undefined && { hoursPerWeek: dto.hoursPerWeek ?? null }),
         ...(dto.controlForm !== undefined && { controlForm: dto.controlForm }),
         ...(dto.hasCourseWork !== undefined && { hasCourseWork: dto.hasCourseWork }),
         ...(dto.hasCourseProject !== undefined && { hasCourseProject: dto.hasCourseProject }),

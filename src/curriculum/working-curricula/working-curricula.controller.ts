@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -94,6 +95,22 @@ export class WorkingCurriculaController {
     return this.workingCurriculaService.update(id, dto)
   }
 
+  @ApiOperation({
+    summary: 'Видалити порожній робочий навчальний план',
+    description:
+      'Дозволено лише для незатвердженого плану без прив\'язаних груп і без внесеного розподілу годин.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID робочого плану' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 400, description: 'Затверджений, непорожній або з прив\'язаними групами' })
+  @ApiResponse({ status: 404 })
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Authorization(...WRITE_ROLES)
+  public async delete(@Param('id') id: string) {
+    await this.workingCurriculaService.delete(id)
+  }
+
   @ApiOperation({ summary: 'Затвердити робочий навчальний план' })
   @ApiParam({ name: 'id', description: 'UUID робочого плану' })
   @Post(':id/approve')
@@ -101,6 +118,21 @@ export class WorkingCurriculaController {
   @Authorization(UserRole.DIRECTOR, UserRole.DEPUTY_DIRECTOR, UserRole.ADMINISTRATOR)
   public approve(@Param('id') id: string) {
     return this.workingCurriculaService.approve(id)
+  }
+
+  @ApiOperation({
+    summary: 'Ініціалізувати рядки розподілу годин',
+    description:
+      'Ідемпотентно створює WorkingCurriculumComponentTerm для всіх канонічних термів версії. ' +
+      'Наявні рядки не перезаписуються. Безпечно викликати повторно.',
+  })
+  @ApiParam({ name: 'id', description: 'UUID робочого плану' })
+  @ApiResponse({ status: 200 })
+  @Post(':id/initialize-terms')
+  @HttpCode(HttpStatus.OK)
+  @Authorization(...WRITE_ROLES)
+  public initializeTerms(@Param('id') id: string) {
+    return this.workingCurriculaService.initializeTerms(id)
   }
 
   @ApiOperation({

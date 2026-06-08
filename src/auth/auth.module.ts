@@ -11,6 +11,8 @@ import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { PasswordRecoveryModule } from './password-recovery/password-recovery.module'
 import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service'
+import { TotpService } from './two-factor-auth/totp.service'
+import { TwoFactorController } from './two-factor-auth/two-factor.controller'
 
 @Module({
   imports: [
@@ -22,8 +24,8 @@ import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service'
     PasswordRecoveryModule,
     EdboModule
   ],
-  controllers: [AuthController],
-  providers: [AuthService, UserService, MailService, TwoFactorAuthService],
+  controllers: [AuthController, TwoFactorController],
+  providers: [AuthService, UserService, MailService, TwoFactorAuthService, TotpService],
   exports: [AuthService]
 })
 export class AuthModule {}

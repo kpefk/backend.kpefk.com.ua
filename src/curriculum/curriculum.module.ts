@@ -13,6 +13,7 @@ import { GroupAssignmentsController } from './group-assignments/group-assignment
 import { GroupAssignmentsService } from './group-assignments/group-assignments.service'
 import { SpecialtiesController } from './specialties/specialties.controller'
 import { SpecialtiesService } from './specialties/specialties.service'
+import { WorkingComponentTermsController } from './working-curricula/working-component-terms.controller'
 import { WorkingCurriculaController } from './working-curricula/working-curricula.controller'
 import { WorkingCurriculaService } from './working-curricula/working-curricula.service'
 
@@ -25,6 +26,7 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     CurriculumVersionsController,
     GroupAssignmentsController,
     WorkingCurriculaController,
+    WorkingComponentTermsController,
   ],
   providers: [
     SpecialtiesService,

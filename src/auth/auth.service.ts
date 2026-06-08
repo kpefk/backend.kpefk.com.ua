@@ -19,6 +19,7 @@ import { EdboService } from '@/edbo/core/edbo.service'
 import { LoginDto } from './dto/login.dto'
 import { RegisterStudentDto } from './dto/register-student.dto'
 import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service'
+import { TotpService } from './two-factor-auth/totp.service'
 import { UserEntity } from '@/user/entities/user.entity'
 import { StudentProfileEntity } from './entities/student-profile.entity'
 
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly userService: UserService,
     private readonly configService: ConfigService,
     private readonly twoFactorAuthService: TwoFactorAuthService,
+    private readonly totpService: TotpService,
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly edboService: EdboService
@@ -65,17 +67,33 @@ export class AuthService {
       )
     }
 
-    if (user.isTwoFactorEnabled) {
+    // Determine effective 2FA method.
+    // Backward-compat: if isTwoFactorEnabled=true but twoFactorMethod=NONE (pre-migration),
+    // treat as EMAIL so existing users are not locked out.
+    const method =
+      user.twoFactorMethod === 'NONE' && user.isTwoFactorEnabled
+        ? 'EMAIL'
+        : user.twoFactorMethod
+
+    if (method === 'EMAIL') {
       if (!dto.code) {
         await this.twoFactorAuthService.sendTwoFactorToken(user.email)
-
         return {
-          message:
-            'Перевірте вашу поштову адресу. Потрібен код двофакторної аутентифікації.'
+          message: 'Перевірте вашу поштову адресу. Потрібен код двофакторної аутентифікації.'
         }
       }
-
       await this.twoFactorAuthService.validateTwoFactorToken(user.email, dto.code)
+    } else if (method === 'TOTP') {
+      if (!dto.code) {
+        return { message: 'Введіть 6-значний код з програми Authenticator.' }
+      }
+      if (!user.totpSecret) {
+        throw new UnauthorizedException('TOTP secret not configured. Contact administrator.')
+      }
+      const plainSecret = this.totpService.decrypt(user.totpSecret)
+      if (!this.totpService.verify(dto.code, plainSecret)) {
+        throw new UnauthorizedException('Невірний код Authenticator. Перевірте застосунок та спробуйте знову.')
+      }
     }
 
     return this.saveSession(req, user)

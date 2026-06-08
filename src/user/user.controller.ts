@@ -5,9 +5,10 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  Patch
+  Patch,
+  Post
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
+import { TwoFactorMethod, UserRole } from '@prisma/client'
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,6 +24,7 @@ import { UpdateUserDto } from './dto/update-user.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
 import { UserService } from './user.service'
 import { UserEntity } from './entities/user.entity'
+import { PrismaService } from '@/prisma/prisma.service'
 
 /**
  * Контролер для управління користувачами.
@@ -35,7 +37,10 @@ export class UserController {
    * Конструктор контролера користувачів.
    * @param userService - Сервіс для роботи з користувачами.
    */
-  public constructor(private readonly userService: UserService) {}
+  public constructor(
+    private readonly userService: UserService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   /**
    * Отримує профіль поточного користувача.
@@ -138,5 +143,28 @@ export class UserController {
   public async resetPassword(@Param('id') id: string): Promise<UserEntity> {
     const user = await this.userService.resetPasswordByAdmin(id)
     return new UserEntity(user)
+  }
+
+  /**
+   * Скидає двофакторну автентифікацію для довільного користувача (адмін).
+   * @param id - ID користувача.
+   * @returns { success: true }
+   */
+  @ApiOperation({ summary: 'Скинути 2FA для користувача (адміністратор)' })
+  @ApiParam({ name: 'id', description: 'ID користувача' })
+  @Authorization(UserRole.ADMINISTRATOR)
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/2fa/reset')
+  public async reset2FA(@Param('id') id: string): Promise<{ success: boolean }> {
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        twoFactorMethod: TwoFactorMethod.NONE,
+        isTwoFactorEnabled: false,
+        totpSecret: null,
+        totpVerifiedAt: null,
+      },
+    })
+    return { success: true }
   }
 }

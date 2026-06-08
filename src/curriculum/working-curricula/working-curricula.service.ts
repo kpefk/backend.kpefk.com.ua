@@ -4,6 +4,7 @@ import { PrismaService } from '@/prisma/prisma.service'
 
 import { CreateWorkingAssignmentDto } from './dto/create-working-assignment.dto'
 import { CreateWorkingCurriculumDto } from './dto/create-working-curriculum.dto'
+import { UpdateWorkingComponentTermDto } from './dto/update-working-component-term.dto'
 import { UpdateWorkingCurriculumDto } from './dto/update-working-curriculum.dto'
 import { UpsertWorkingComponentTermDto } from './dto/upsert-working-component-term.dto'
 
@@ -33,7 +34,7 @@ export class WorkingCurriculaService {
   // ── Working curriculum CRUD ───────────────────────────────────────────────
 
   public async findAll(versionId?: string, academicYear?: string) {
-    return this.prisma.workingCurriculum.findMany({
+    const items = await this.prisma.workingCurriculum.findMany({
       where: {
         ...(versionId ? { versionId } : {}),
         ...(academicYear ? { academicYear } : {}),
@@ -44,6 +45,27 @@ export class WorkingCurriculaService {
         _count: { select: { groupAssignments: true, componentTerms: true } },
       },
     })
+
+    if (items.length === 0) return []
+
+    // Batch: fetch which working curricula have at least one non-zero hour value
+    const nonEmptyGroups = await this.prisma.workingCurriculumComponentTerm.groupBy({
+      by: ['workingCurriculumId'],
+      where: {
+        workingCurriculumId: { in: items.map((i) => i.id) },
+        OR: [
+          { lectureHours: { gt: 0 } },
+          { practicalHours: { gt: 0 } },
+          { labHours: { gt: 0 } },
+          { seminarHours: { gt: 0 } },
+          { independentHours: { gt: 0 } },
+          { consultationHours: { gt: 0 } },
+        ],
+      },
+    })
+    const nonEmptyIds = new Set(nonEmptyGroups.map((g) => g.workingCurriculumId))
+
+    return items.map((item) => ({ ...item, isEmpty: !nonEmptyIds.has(item.id) }))
   }
 
   public async findById(id: string) {
@@ -68,7 +90,18 @@ export class WorkingCurriculaService {
     })
 
     if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
-    return wc
+
+    const isEmpty = wc.componentTerms.every(
+      (t) =>
+        t.lectureHours === 0 &&
+        t.practicalHours === 0 &&
+        t.labHours === 0 &&
+        t.seminarHours === 0 &&
+        t.independentHours === 0 &&
+        t.consultationHours === 0,
+    )
+
+    return { ...wc, isEmpty }
   }
 
   /**
@@ -118,7 +151,36 @@ export class WorkingCurriculaService {
   }
 
   /**
+   * Перевіряє, чи є розподіл годин робочого плану порожнім.
+   *
+   * Порожній план: немає жодного запису компонент-семестру АБО сума всіх
+   * погодинних полів по всіх записах дорівнює нулю.
+   */
+  private async isEmptyById(id: string): Promise<boolean> {
+    const agg = await this.prisma.workingCurriculumComponentTerm.aggregate({
+      where: { workingCurriculumId: id },
+      _sum: {
+        lectureHours: true,
+        practicalHours: true,
+        labHours: true,
+        seminarHours: true,
+        independentHours: true,
+        consultationHours: true,
+      },
+    })
+    const total =
+      (agg._sum.lectureHours ?? 0) +
+      (agg._sum.practicalHours ?? 0) +
+      (agg._sum.labHours ?? 0) +
+      (agg._sum.seminarHours ?? 0) +
+      (agg._sum.independentHours ?? 0) +
+      (agg._sum.consultationHours ?? 0)
+    return total === 0
+  }
+
+  /**
    * Затверджує робочий навчальний план на поточний навчальний рік.
+   * Забороняє затвердження порожнього плану.
    */
   public async approve(id: string) {
     const wc = await this.prisma.workingCurriculum.findUnique({ where: { id } })
@@ -127,13 +189,157 @@ export class WorkingCurriculaService {
       throw new BadRequestException('Робочий план вже затверджено.')
     }
 
+    const empty = await this.isEmptyById(id)
+    if (empty) {
+      throw new BadRequestException(
+        'Неможливо затвердити порожній робочий план. Спочатку внесіть розподіл годин для всіх компонентів.',
+      )
+    }
+
     return this.prisma.workingCurriculum.update({
       where: { id },
       data: { isApproved: true, approvedAt: new Date() },
     })
   }
 
+  /**
+   * Видаляє робочий навчальний план.
+   *
+   * Дозволено лише якщо:
+   * - план не затверджено,
+   * - немає прив'язаних груп,
+   * - розподіл годин не заповнено (план порожній).
+   */
+  public async delete(id: string) {
+    const wc = await this.prisma.workingCurriculum.findUnique({
+      where: { id },
+      include: { _count: { select: { groupAssignments: true } } },
+    })
+    if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
+
+    if (wc.isApproved) {
+      throw new BadRequestException('Неможливо видалити затверджений робочий план.')
+    }
+
+    if (wc._count.groupAssignments > 0) {
+      throw new BadRequestException(
+        'Неможливо видалити робочий план, до якого прив\'язані групи. Спочатку від\'яжіть групи.',
+      )
+    }
+
+    const empty = await this.isEmptyById(id)
+    if (!empty) {
+      throw new BadRequestException(
+        'Неможливо видалити робочий план із внесеним розподілом годин. Очистіть розподіл перед видаленням.',
+      )
+    }
+
+    // WorkingCurriculumComponentTerm has onDelete: Cascade → terms deleted automatically
+    await this.prisma.workingCurriculum.delete({ where: { id } })
+  }
+
   // ── Component terms (hour breakdown) ────────────────────────────────────
+
+  /**
+   * Ідемпотентно ініціалізує рядки розподілу годин:
+   * для кожного канонічного CurriculumComponentTerm, що входить до семестрів
+   * цього робочого плану, створює WorkingCurriculumComponentTerm (якщо ще немає).
+   * Наявні рядки НЕ перезаписуються.
+   *
+   * Безпечно викликати повторно — дублів не виникає.
+   */
+  public async initializeTerms(id: string) {
+    const wc = await this.prisma.workingCurriculum.findUnique({ where: { id } })
+    if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
+    if (wc.isApproved) {
+      throw new BadRequestException('Затверджений план не можна змінювати.')
+    }
+
+    // Знайти всі канонічні терми версії в потрібних семестрах
+    const canonicalTerms = await this.prisma.curriculumComponentTerm.findMany({
+      where: {
+        semesterNumber: { in: wc.semesterNumbers },
+        component: {
+          section: { versionId: wc.versionId },
+        },
+      },
+      select: { id: true },
+    })
+
+    if (canonicalTerms.length === 0) {
+      throw new BadRequestException(
+        'У навчальному плані немає компонентів для вибраних семестрів. Спочатку заповніть структуру плану.',
+      )
+    }
+
+    // Ідемпотентне створення: пропустити ті, що вже існують
+    await this.prisma.workingCurriculumComponentTerm.createMany({
+      data: canonicalTerms.map((t) => ({
+        workingCurriculumId: id,
+        componentTermId: t.id,
+        lectureHours: 0,
+        practicalHours: 0,
+        labHours: 0,
+        seminarHours: 0,
+        independentHours: 0,
+        consultationHours: 0,
+      })),
+      skipDuplicates: true,
+    })
+
+    return this.findById(id)
+  }
+
+  /**
+   * Оновлює розбивку годин для конкретного WorkingCurriculumComponentTerm за його ID.
+   *
+   * Дозволяє часткове оновлення (PATCH-семантика): не вказані поля залишаються без змін.
+   * Перевіряє, що сума годин після оновлення не перевищує нормативний обсяг.
+   */
+  public async updateComponentTerm(termId: string, dto: UpdateWorkingComponentTermDto) {
+    const term = await this.prisma.workingCurriculumComponentTerm.findUnique({
+      where: { id: termId },
+      include: {
+        workingCurriculum: { select: { isApproved: true } },
+        componentTerm: { select: { hours: true } },
+      },
+    })
+    if (!term) throw new NotFoundException('Запис розподілу годин не знайдено.')
+    if (term.workingCurriculum.isApproved) {
+      throw new BadRequestException('Затверджений план не можна змінювати.')
+    }
+
+    const next = {
+      lectureHours: dto.lectureHours ?? term.lectureHours,
+      practicalHours: dto.practicalHours ?? term.practicalHours,
+      labHours: dto.labHours ?? term.labHours,
+      seminarHours: dto.seminarHours ?? term.seminarHours,
+      independentHours: dto.independentHours ?? term.independentHours,
+      consultationHours: dto.consultationHours ?? term.consultationHours,
+    }
+    const total = Object.values(next).reduce((s, v) => s + v, 0)
+    if (total > term.componentTerm.hours) {
+      throw new BadRequestException(
+        `Сума годин (${total}) перевищує нормативний обсяг компонента (${term.componentTerm.hours} год).`,
+      )
+    }
+
+    return this.prisma.workingCurriculumComponentTerm.update({
+      where: { id: termId },
+      data: {
+        ...next,
+        ...(dto.weeklyLectureHours !== undefined && { weeklyLectureHours: dto.weeklyLectureHours }),
+        ...(dto.weeklyPracticalHours !== undefined && { weeklyPracticalHours: dto.weeklyPracticalHours }),
+      },
+      include: {
+        componentTerm: {
+          include: {
+            component: { select: { id: true, code: true, name: true, componentType: true } },
+          },
+        },
+      },
+    })
+  }
 
   /**
    * Вставляє або оновлює розбивку годин для компонент-семестру.

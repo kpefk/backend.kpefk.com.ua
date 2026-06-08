@@ -6,6 +6,13 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Метод двофакторної автентифікації
+enum TwoFactorMethod {
+  NONE  // 2FA вимкнена
+  EMAIL // Код на email
+  TOTP  // Google Authenticator / Authy (TOTP RFC 6238)
+}
+
 /// Model for user authorization in the My KPEFK system
 model User {
   id String @id @default(uuid())
@@ -14,9 +21,13 @@ model User {
   password String
   role     UserRole @default(STUDENT)
 
-  isTwoFactorEnabled Boolean @default(false) @map("is_two_factor_enabled")
-  isFirstLogin       Boolean @default(true)  @map("is_first_login")
-  isActive           Boolean @default(true)  @map("is_active")
+  isTwoFactorEnabled Boolean          @default(false)  @map("is_two_factor_enabled")
+  twoFactorMethod    TwoFactorMethod  @default(NONE)   @map("two_factor_method")
+  totpSecret         String?                           @map("totp_secret")       // AES-256 encrypted base32 secret
+  totpVerifiedAt     DateTime?                         @map("totp_verified_at")  // null until first TOTP confirmed
+
+  isFirstLogin Boolean @default(true) @map("is_first_login")
+  isActive     Boolean @default(true) @map("is_active")
 
   tokens  Token[]
   student Student?
@@ -322,12 +333,34 @@ enum AdmissionBasis {
 
 /// Тип розділу навчального плану
 enum CurriculumSectionType {
-  SECONDARY_EDUCATION     // Блок загальної середньої освіти (ЗСО)
-  GENERAL_COMPETENCY      // Компоненти загальних компетентностей ОПП
-  PROFESSIONAL_COMPETENCY // Компоненти фахових компетентностей ОПП
+  // ── Профільна середня освіта ──────────────────────────────────────────────
+  SECONDARY_EDUCATION     // Загальна середня освіта (legacy / сумарний блок ЗСО)
+  BASIC_OPP               // Базові компоненти ОПП
+  ELECTIVE_OPP            // Вибірково-обов'язкові компоненти ОПП
+  OPTIONAL_COURSES        // Факультативні курси
+
+  // ── Фахова підготовка ─────────────────────────────────────────────────────
+  GENERAL_COMPETENCY      // Загальні компетентності
+  PROFESSIONAL_COMPETENCY // Фахові компетентності
   ELECTIVE                // Вибіркова частина (ВК)
   PRACTICE                // Практична підготовка
   ATTESTATION             // Атестація здобувачів ФПО
+  CFP                     // Цикл фахової підготовки (ЦФП)
+}
+
+/// Форма підсумкового контролю за семестр (на рівні терміну)
+enum TermControlForm {
+  EXAM          // Екзамен
+  CREDIT        // Залік
+  GRADED_CREDIT // Диференційований залік
+}
+
+/// Укрупнена категорія освітнього компонента (для структури плану)
+enum CurriculumComponentType {
+  REGULAR       // Звичайна навчальна дисципліна
+  PRACTICE      // Виробнича / переддипломна практика
+  ATTESTATION   // Атестація / захист / ЗНО
+  ELECTIVE_GROUP // Вибіркова група (студент обирає одну з кількох дисциплін)
 }
 
 /// Тип освітнього компонента
@@ -514,8 +547,9 @@ model CurriculumSection {
   sectionType  CurriculumSectionType @map("section_type")
   subtotalEcts Decimal?              @map("subtotal_ects") @db.Decimal(6, 2)
 
-  components     CurriculumComponent[]
-  electiveBlocks ElectiveBlock[]
+  components         CurriculumComponent[]
+  electiveBlocks     ElectiveBlock[]
+  displayProjections CurriculumComponentDisplayInSection[]
 
   @@index([versionId])
   @@map("curriculum_sections")
@@ -570,13 +604,34 @@ model CurriculumComponent {
 
   notes String?
 
-  terms             CurriculumComponentTerm[]
-  planItems         StudentIndividualPlanItem[]
-  groupSelections   GroupElectiveSelection[]
-  studentSelections StudentElectiveSelection[]
+  // ── Укрупнена категорія (новий класифікатор) ──────────────────────────────
+  componentKind CurriculumComponentType @default(REGULAR) @map("component_kind")
+
+  // ── Розподіл годин ────────────────────────────────────────────────────────
+  auditoryHours       Int? @map("auditory_hours")       // Аудиторні (загалом)
+  lectureHours        Int? @map("lecture_hours")        // Лекційні
+  practicalHours      Int? @map("practical_hours")      // Практичні заняття
+  seminarHours        Int? @map("seminar_hours")        // Семінарські
+  labHours            Int? @map("lab_hours")            // Лабораторні
+  selfStudyHours      Int? @map("self_study_hours")     // Самостійна робота
+  otherHours          Int? @map("other_hours")          // Інші (консультації тощо)
+  znoPreparationHours Int? @map("zno_preparation_hours") // Підготовка до ЗНО (тільки для ЗСО)
+
+  // ── Вибіркова група: ієрархія альтернатив ─────────────────────────────────
+  groupCode         String?             @map("group_code")          // "ВК1", "ВК4"
+  parentComponentId String?             @map("parent_component_id")
+  parentComponent   CurriculumComponent? @relation("ComponentAlternatives", fields: [parentComponentId], references: [id], onDelete: SetNull)
+  alternatives      CurriculumComponent[] @relation("ComponentAlternatives")
+
+  terms              CurriculumComponentTerm[]
+  planItems          StudentIndividualPlanItem[]
+  groupSelections    GroupElectiveSelection[]
+  studentSelections  StudentElectiveSelection[]
+  displayProjections CurriculumComponentDisplayInSection[]
 
   @@index([sectionId])
   @@index([electiveBlockId])
+  @@index([parentComponentId])
   @@map("curriculum_components")
 }
 
@@ -588,18 +643,51 @@ model CurriculumComponentTerm {
   componentId String              @map("component_id")
   component   CurriculumComponent @relation(fields: [componentId], references: [id], onDelete: Restrict)
 
-  semesterNumber   Int         @map("semester_number")
-  ects             Decimal     @db.Decimal(6, 2)
+  semesterNumber   Int              @map("semester_number")
+  ects             Decimal          @db.Decimal(6, 2)
   hours            Int
-  controlForm      ControlForm @map("control_form")
-  hasCourseWork    Boolean     @default(false) @map("has_course_work")
-  hasCourseProject Boolean     @default(false) @map("has_course_project")
+  hoursPerWeek     Int?             @map("hours_per_week")   // Годин на тиждень (знаменник у "34/2")
+  controlForm      TermControlForm? @map("control_form")     // Форма підсумкового контролю (null = не вказано)
+  hasCourseWork    Boolean          @default(false) @map("has_course_work")
+  hasCourseProject Boolean          @default(false) @map("has_course_project")
 
   workingTerms WorkingCurriculumComponentTerm[]
 
   @@unique([componentId, semesterNumber])
   @@index([componentId])
   @@map("curriculum_component_terms")
+}
+
+// ─── Structure: Component Display Projection ──────────────────────────────────
+
+/// Відображення освітнього компонента в додатковому розділі (інтеграційна проекція).
+///
+/// Канонічний компонент живе в одному основному розділі (CurriculumComponent.sectionId).
+/// Цей рядок лише вказує «також показати в розділі X» для цілей відображення —
+/// без дублювання сутності, годин, ЄКТС, термінів або будь-яких агрегатів.
+///
+/// Інваріанти, що забезпечуються сервісом:
+///   • componentId та sectionId належать до ОДНІЄЇ версії навчального плану.
+///   • sectionId ≠ component.sectionId (не можна проектувати в основний розділ).
+///   • Проекція не може бути створена/видалена після публікації версії.
+///   • Проекція не впливає на підрахунок підсумків розділу або плану в цілому.
+model CurriculumComponentDisplayInSection {
+  id            String  @id @default(uuid())
+  componentId   String  @map("component_id")
+  sectionId     String  @map("section_id")
+  displayOrder  Int     @default(0) @map("display_order")
+  /// Позначка-маркер для відображення поруч з назвою (наприклад «*»)
+  displayMarker String? @map("display_marker")
+  /// Пояснювальна нотатка (наприклад «Інтегровано з ОК3»)
+  displayNote   String? @map("display_note")
+
+  component CurriculumComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  section   CurriculumSection   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([componentId, sectionId])
+  @@index([sectionId, displayOrder])
+  @@index([componentId])
+  @@map("curriculum_component_display_in_sections")
 }
 
 // ─── Structure: Time Budget ───────────────────────────────────────────────────
