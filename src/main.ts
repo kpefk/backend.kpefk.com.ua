@@ -4,8 +4,8 @@ import { DecimalSerializerInterceptor } from './libs/common/interceptors/decimal
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import { ConfigService } from '@nestjs/config'
 import { RedisStore } from 'connect-redis'
-import * as cookieParser from 'cookie-parser'
-import * as session from 'express-session'
+import cookieParser from 'cookie-parser'
+import session from 'express-session'
 import { createClient } from 'redis'
 
 import { AppModule } from './app.module'
