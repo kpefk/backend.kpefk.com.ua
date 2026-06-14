@@ -1,21 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator'
+import { IsBoolean, IsOptional } from 'class-validator'
 
 /**
  * DTO для оновлення даних користувача.
+ *
+ * Зміна email тут НЕ підтримується — для цього є окремий підтверджуваний
+ * флоу (POST /users/profile/email + GET /users/email-change/confirm/:token),
+ * щоб уникнути зміни пошти без верифікації.
  */
 export class UpdateUserDto {
-  /**
-   * Email користувача.
-   * @example example@kpefk.com.ua
-   */
-  @ApiPropertyOptional({ description: 'Новий email користувача', example: 'example@kpefk.com.ua' })
-  @IsOptional()
-  @IsString({ message: 'Email повинен бути текстом.' })
-  @IsEmail({}, { message: 'Некоректний формат Email.' })
-  @IsNotEmpty({ message: 'Email обов\'язковий для заповнення.' })
-  email?: string
-
   /**
    * Прапорець, що вказує, чи включена двофакторна аутентифікація.
    */

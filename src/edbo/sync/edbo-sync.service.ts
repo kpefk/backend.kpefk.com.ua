@@ -6,6 +6,8 @@ import { PrismaService } from '@/prisma/prisma.service'
 import { EdboService, EdboPersonDocument } from '@/edbo/core/edbo.service'
 import { GroupsService } from '@/groups/groups.service'
 
+import { parseCoursesInfo } from '@/staff/courses-info-parser'
+
 import { SyncStateService, SYNC_KEYS } from './sync-state.service'
 
 // ── Типи відповіді ЄДЕБО API: освітні програми ───────────────────
@@ -22,6 +24,8 @@ interface EdboStudyProgramRecord {
   specializationName: string | null
   isBlocked: boolean
   dateLastChange: string | null
+  accreditationExistsType: number | null
+  accreditationExistsTypeName: string | null
 }
 
 interface EdboStudyProgramListParams {
@@ -410,18 +414,25 @@ export class EdboSyncService {
           where: { staffId: record.staffId },
         })
 
+        let teacherId: string
+
         if (existing) {
           await this.prisma.teacher.update({
             where: { id: existing.id },
             data: this.mapStaffData(record),
           })
+          teacherId = existing.id
           result.updated++
         } else {
-          await this.prisma.teacher.create({
+          const created = await this.prisma.teacher.create({
             data: this.mapStaffData(record),
           })
+          teacherId = created.id
           result.created++
         }
+
+        // Синхронізуємо записи підвищення кваліфікації з coursesInfo
+        await this.syncQualificationUpgrades(teacherId, record.coursesInfo)
       }
 
       result.total += records.length
@@ -561,8 +572,12 @@ export class EdboSyncService {
           qualificationName: record.qualificationGroupName ?? record.studyProgramName,
           qualificationLevel: record.qualificationGroupName ?? null,
           qualificationGroupId: record.qualificationGroupId ?? null,
+          qualificationGroupName: record.qualificationGroupName ?? null,
           universitySpecializationId: record.universitySpecializationId ?? null,
           specializationName: record.specializationName ?? null,
+          accreditationExistsType: record.accreditationExistsType ?? null,
+          accreditationExistsTypeName: record.accreditationExistsTypeName ?? null,
+          edeboDateLastChange: record.dateLastChange ? new Date(record.dateLastChange) : null,
           isActive: !record.isBlocked,
           syncedAt: new Date(),
         }
@@ -602,34 +617,105 @@ export class EdboSyncService {
   }
 
   /**
+   * Розбирає `specialityName` ЄДЕБО на код і чисту назву.
+   * ЄДЕБО віддає назву з кодом-префіксом: "F3 Комп'ютерні науки",
+   * "122 Комп'ютерні науки", "073 Менеджмент", "G11 Машинобудування".
+   * Код — перший токен (літери+цифри або лише цифри), решта — назва.
+   */
+  private parseSpecialtyCode(specialityName: string): {
+    code: string | null
+    name: string
+  } {
+    const trimmed = specialityName.trim()
+    const match = trimmed.match(/^([A-Za-zА-Яа-я]{0,2}\d+)\s+(.+)$/)
+    if (match) {
+      return { code: match[1].toUpperCase(), name: match[2].trim() }
+    }
+    return { code: null, name: trimmed }
+  }
+
+  /**
+   * Підбирає унікальний код спеціальності.
+   * Перше входження отримує чистий код ("122"), наступні колізії (інші
+   * specialityId з тим самим кодом, напр. legacy-редакції) — суфікс "122/2".
+   */
+  private async buildUniqueSpecialtyCode(
+    desiredCode: string,
+    excludeId?: string,
+  ): Promise<string> {
+    let candidate = desiredCode
+    let n = 1
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const clash = await this.prisma.specialty.findFirst({
+        where: {
+          code: candidate,
+          ...(excludeId ? { NOT: { id: excludeId } } : {}),
+        },
+        select: { id: true },
+      })
+      if (!clash) return candidate
+      n += 1
+      candidate = `${desiredCode}/${n}`
+    }
+  }
+
+  /**
    * Знаходить або створює запис Specialty для освітньої програми з ЄДЕБО.
    *
    * Пріоритети:
-   * 1. Точний збіг за edeboSpecialityId
-   * 2. Точний збіг за назвою (case-insensitive) → оновлює edeboSpecialityId якщо відсутній
-   * 3. Створення нового запису з кодом `EDEBO-{specialityId}`
-   * 4. null — якщо немає ані specialityId, ані specialityName для ідентифікації
+   * 1. Точний збіг за edeboSpecialityId (+ самовиправлення коду EDEBO-* → реальний)
+   * 2. Точний збіг за реальним кодом (F3, 122, 073 …)
+   * 3. Точний збіг за чистою назвою (case-insensitive)
+   * 4. Створення нового запису з реальним кодом
+   * 5. null — якщо немає достатньо даних для ідентифікації
    */
   private async resolveSpecialtyForStudyProgram(
     record: EdboStudyProgramRecord,
   ): Promise<string | null> {
     const { specialityId, specialityName } = record
+    const parsed = specialityName ? this.parseSpecialtyCode(specialityName) : null
 
-    // 1. Пошук за ЄДЕБО-кодом спеціальності
+    // 1. За ЄДЕБО-id (найнадійніший ключ)
     if (specialityId !== null && specialityId !== undefined) {
       const byEdeboId = await this.prisma.specialty.findFirst({
         where: { edeboSpecialityId: specialityId },
       })
-      if (byEdeboId) return byEdeboId.id
+      if (byEdeboId) {
+        // Самовиправлення: замінюємо плейсхолдер EDEBO-* на реальний код.
+        if (parsed?.code && byEdeboId.code.startsWith('EDEBO-')) {
+          const code = await this.buildUniqueSpecialtyCode(parsed.code, byEdeboId.id)
+          await this.prisma.specialty.update({
+            where: { id: byEdeboId.id },
+            data: { code, name: parsed.name },
+          })
+        }
+        return byEdeboId.id
+      }
     }
 
-    // 2. Пошук за назвою (для вже засіяних спеціальностей)
-    if (specialityName) {
+    // 2. За реальним кодом
+    if (parsed?.code) {
+      const byCode = await this.prisma.specialty.findFirst({
+        where: { code: parsed.code },
+      })
+      if (byCode) {
+        if (specialityId !== null && specialityId !== undefined && !byCode.edeboSpecialityId) {
+          await this.prisma.specialty.update({
+            where: { id: byCode.id },
+            data: { edeboSpecialityId: specialityId },
+          })
+        }
+        return byCode.id
+      }
+    }
+
+    // 3. За чистою назвою (для вже засіяних спеціальностей)
+    if (parsed?.name) {
       const byName = await this.prisma.specialty.findFirst({
-        where: { name: { equals: specialityName, mode: 'insensitive' } },
+        where: { name: { equals: parsed.name, mode: 'insensitive' } },
       })
       if (byName) {
-        // Прив'язуємо edeboSpecialityId до знайденої локальної спеціальності
         if (specialityId !== null && specialityId !== undefined && !byName.edeboSpecialityId) {
           await this.prisma.specialty.update({
             where: { id: byName.id },
@@ -640,12 +726,14 @@ export class EdboSyncService {
       }
     }
 
-    // 3. Створюємо новий запис якщо є достатньо даних
-    if (specialityId !== null && specialityId !== undefined && specialityName) {
+    // 4. Створюємо новий запис
+    if (specialityId !== null && specialityId !== undefined && parsed) {
+      const desired = parsed.code ?? `EDEBO-${specialityId}`
+      const code = await this.buildUniqueSpecialtyCode(desired)
       const created = await this.prisma.specialty.create({
         data: {
-          code: `EDEBO-${specialityId}`,
-          name: specialityName,
+          code,
+          name: parsed.name,
           edeboSpecialityId: specialityId,
           isActive: true,
         },
@@ -701,6 +789,7 @@ export class EdboSyncService {
       universityId: this.universityId,
       educationId: r.educationId,
       personCodeU: r.personCodeU,
+      personNameEn: r.personNameEn || null,
       educationHistoryActualId: r.educationHistoryActualId,
       dateBegin: r.dateBegin ? new Date(r.dateBegin) : null,
       dateEnd: r.dateEnd ? new Date(r.dateEnd) : null,
@@ -716,6 +805,7 @@ export class EdboSyncService {
       qualificationGroupName: r.qualificationGroupName,
       educationFormId: r.educationFormId,
       educationFormName: r.educationFormName,
+      personEducationPaymentTypeName: r.personEducationPaymentTypeName,
       isDualForm: r.isDualForm,
       isSecondHigher: r.isSecondHigher,
       isShortTerm: r.isShortTerm,
@@ -771,6 +861,37 @@ export class EdboSyncService {
       coursesInfo: r.coursesInfo,
       modifyDate: r.dateLastChange ? new Date(r.dateLastChange) : null,
     }
+  }
+
+  // ── Підвищення кваліфікації ───────────────────────────────────────
+
+  /**
+   * Замінює EDEBO_PARSED записи підвищення кваліфікації для викладача.
+   * MANUAL-записи не чіпаємо.
+   */
+  private async syncQualificationUpgrades(teacherId: string, coursesInfo: string | null): Promise<void> {
+    const parsed = parseCoursesInfo(coursesInfo)
+
+    // Видаляємо старі авто-розпарсені записи
+    await this.prisma.teacherQualificationUpgrade.deleteMany({
+      where: { teacherId, source: 'EDEBO_PARSED' },
+    })
+
+    if (parsed.length === 0) return
+
+    await this.prisma.teacherQualificationUpgrade.createMany({
+      data: parsed.map(p => ({
+        teacherId,
+        source: 'EDEBO_PARSED' as const,
+        rawText: p.rawText,
+        courseName: p.courseName,
+        organizationName: p.organizationName,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        hours: p.hours,
+        certificateNumber: p.certificateNumber,
+      })),
+    })
   }
 
   // ── Утиліти ───────────────────────────────────────────────────────

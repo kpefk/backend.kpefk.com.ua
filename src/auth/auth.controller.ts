@@ -6,9 +6,11 @@ import {
   HttpStatus,
   Post,
   Req,
-  Res
+  Res,
+  UseGuards
 } from '@nestjs/common'
 import { Recaptcha } from '@nestlab/google-recaptcha'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { Request, Response } from 'express'
 
@@ -65,17 +67,22 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Невірний пароль або акаунт деактивовано' })
   @ApiResponse({ status: 404, description: 'Користувача не знайдено' })
   @Recaptcha()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @Post('login')
   public async login(@Req() req: Request, @Body() dto: LoginDto) {
     return this.authService.login(req, dto)
   }
 
+  @Recaptcha()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @Post('register')
   public async register(@Req() req: Request, @Body() dto: RegisterStudentDto) {
     return this.authService.register_student(req, dto)
-  } 
+  }
 
   /**
    * Завершує сесію поточного користувача.

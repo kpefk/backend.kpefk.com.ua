@@ -1,0 +1,2134 @@
+{
+  "meta": {
+    "sourceFile": "Навч план КОМПЮТЕРНІ НАУК на 2024-2025 н.р.xls",
+    "academicYear": "2024-2025",
+    "specialtyName": "КОМПЮТЕРНІ НАУК"
+  },
+  "semesters": [
+    {
+      "semesterNumber": 1,
+      "courseNumber": 1,
+      "weeks": 17
+    },
+    {
+      "semesterNumber": 2,
+      "courseNumber": 1,
+      "weeks": 23
+    },
+    {
+      "semesterNumber": 3,
+      "courseNumber": 2,
+      "weeks": 16
+    },
+    {
+      "semesterNumber": 4,
+      "courseNumber": 2,
+      "weeks": 21
+    },
+    {
+      "semesterNumber": 5,
+      "courseNumber": 3,
+      "weeks": 16
+    },
+    {
+      "semesterNumber": 6,
+      "courseNumber": 3,
+      "weeks": 21
+    },
+    {
+      "semesterNumber": 7,
+      "courseNumber": 4,
+      "weeks": 13
+    },
+    {
+      "semesterNumber": 8,
+      "courseNumber": 4,
+      "weeks": 12
+    }
+  ],
+  "sections": [
+    {
+      "name": "Базові компоненти ОПП",
+      "part": "SECONDARY",
+      "components": [
+        {
+          "code": "1.",
+          "name": "Українська мова",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            4
+          ],
+          "creditSemesters": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": "4 ДПА",
+          "totalHours": 154,
+          "ects": null,
+          "auditoryHours": 154,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 10
+        },
+        {
+          "code": "2.",
+          "name": "Українська література",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2,
+            3
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 144,
+          "ects": null,
+          "auditoryHours": 144,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 64,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 11
+        },
+        {
+          "code": "3.",
+          "name": "Іноземна мова",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2,
+            3
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 144,
+          "ects": null,
+          "auditoryHours": 144,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": 144,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 64,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 12
+        },
+        {
+          "code": "4.",
+          "name": "Зарубіжна література",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 74,
+          "ects": null,
+          "auditoryHours": 74,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 51,
+              "hoursPerWeek": 3
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 23,
+              "hoursPerWeek": 1
+            }
+          ],
+          "sourceRow": 13
+        },
+        {
+          "code": "5.",
+          "name": "Історія(Інтегрваний курс) Історія Укр",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 196,
+          "ects": null,
+          "auditoryHours": 196,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 84,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 14
+        },
+        {
+          "code": null,
+          "name": "Всесвітня історія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 74,
+          "ects": null,
+          "auditoryHours": 74,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 51,
+              "hoursPerWeek": 3
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 23,
+              "hoursPerWeek": 1
+            }
+          ],
+          "sourceRow": 15
+        },
+        {
+          "code": "6.",
+          "name": "* Громадянська освіта",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 92,
+          "ects": null,
+          "auditoryHours": 92,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 2,
+              "hours": 92,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 16
+        },
+        {
+          "code": "7.",
+          "name": "Математика",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 214,
+          "ects": null,
+          "auditoryHours": 214,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 69,
+              "hoursPerWeek": 3
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 48,
+              "hoursPerWeek": 3
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 63,
+              "hoursPerWeek": 3
+            }
+          ],
+          "sourceRow": 17
+        }
+      ],
+      "subtotal": null,
+      "sourceRow": 9
+    },
+    {
+      "name": "Природничі науки (інтегров курс):",
+      "part": "SECONDARY",
+      "components": [
+        {
+          "code": null,
+          "name": "* Фізика і астрономія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 188,
+          "ects": null,
+          "auditoryHours": 188,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": 188,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 68,
+              "hoursPerWeek": 4
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 19
+        },
+        {
+          "code": null,
+          "name": "* Біологія і екологія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 80,
+          "ects": null,
+          "auditoryHours": 80,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 20
+        },
+        {
+          "code": null,
+          "name": "Географія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 69,
+          "ects": null,
+          "auditoryHours": 69,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 2,
+              "hours": 69,
+              "hoursPerWeek": 3
+            }
+          ],
+          "sourceRow": 21
+        },
+        {
+          "code": null,
+          "name": "Хімія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 57,
+          "ects": null,
+          "auditoryHours": 57,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 23,
+              "hoursPerWeek": 1
+            }
+          ],
+          "sourceRow": 22
+        },
+        {
+          "code": "9.",
+          "name": "Фізична культура",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 219,
+          "ects": null,
+          "auditoryHours": 219,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": 50,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 69,
+              "hoursPerWeek": 3
+            },
+            {
+              "semesterNumber": 3,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 84,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 23
+        },
+        {
+          "code": "10.",
+          "name": "Захист України",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 114,
+          "ects": null,
+          "auditoryHours": 114,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 68,
+              "hoursPerWeek": 4
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 24
+        }
+      ],
+      "subtotal": {
+        "label": "Всього",
+        "totalHours": 1819,
+        "ects": null,
+        "sourceRow": 25
+      },
+      "sourceRow": 18
+    },
+    {
+      "name": "Вибірково-обов'язкові компоненти ОПП",
+      "part": "SECONDARY",
+      "components": [],
+      "subtotal": null,
+      "sourceRow": 26
+    },
+    {
+      "name": "Технології:",
+      "part": "SECONDARY",
+      "components": [
+        {
+          "code": null,
+          "name": "* Економічна теорія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 80,
+          "ects": null,
+          "auditoryHours": 80,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 28
+        },
+        {
+          "code": null,
+          "name": "* Інженерна та комп'ютерна графіка",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            3,
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 74,
+          "ects": null,
+          "auditoryHours": 74,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": 64,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 3,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 29
+        },
+        {
+          "code": "12.",
+          "name": "* Інформатика",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            1,
+            2
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 80,
+          "ects": null,
+          "auditoryHours": 80,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": 80,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 1,
+              "hours": 34,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 2,
+              "hours": 46,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 30
+        }
+      ],
+      "subtotal": {
+        "label": "Всього",
+        "totalHours": 234,
+        "ects": null,
+        "sourceRow": 31
+      },
+      "sourceRow": 27
+    },
+    {
+      "name": "Спеціальні курси",
+      "part": "SECONDARY",
+      "components": [],
+      "subtotal": null,
+      "sourceRow": 32
+    },
+    {
+      "name": "Факультативні курси",
+      "part": "SECONDARY",
+      "components": [
+        {
+          "code": "13.",
+          "name": "Факультатив з підготовки до ЗНО",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 81,
+          "ects": null,
+          "auditoryHours": 81,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 34
+        },
+        {
+          "code": null,
+          "name": "Поділ на підгрупи",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 526,
+          "ects": null,
+          "auditoryHours": 526,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 35
+        }
+      ],
+      "subtotal": {
+        "label": "Всього",
+        "totalHours": 607,
+        "ects": null,
+        "sourceRow": 36
+      },
+      "sourceRow": 33
+    },
+    {
+      "name": "Підготовка фахового молодшого бакалавра",
+      "part": "SECONDARY",
+      "components": [],
+      "subtotal": null,
+      "sourceRow": 38
+    },
+    {
+      "name": "Освітні компоненти, що формують загальні компетентності",
+      "part": "PROFESSIONAL",
+      "components": [
+        {
+          "code": "ОК1",
+          "name": "Історія державності і культура",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 46,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 44,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 32,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 40
+        },
+        {
+          "code": "ОК2",
+          "name": "Укр. мова за професійним спрямуванням",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            6
+          ],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 63,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 27,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 6,
+              "hours": 63,
+              "hoursPerWeek": 3
+            }
+          ],
+          "sourceRow": 41
+        },
+        {
+          "code": "ОК3",
+          "name": "* Інформатика",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 60,
+          "ects": 2,
+          "auditoryHours": 46,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 14,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 42
+        },
+        {
+          "code": "ОК4",
+          "name": "* Основи екології",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 46,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 44,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 43
+        },
+        {
+          "code": "ОК5",
+          "name": "* Економічна теорія",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 60,
+          "ects": 2,
+          "auditoryHours": 46,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 14,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 44
+        },
+        {
+          "code": "ОК6",
+          "name": "Основи правознавства",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            8
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 60,
+          "ects": 2,
+          "auditoryHours": 24,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 36,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 8,
+              "hours": 24,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 45
+        },
+        {
+          "code": "ОК7",
+          "name": "Іноземна мова за професійним спрямуванням",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            5,
+            6
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 120,
+          "ects": 4,
+          "auditoryHours": 106,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 14,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 64,
+              "hoursPerWeek": 4
+            },
+            {
+              "semesterNumber": 6,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 46
+        },
+        {
+          "code": "ОК8",
+          "name": "* Фізичне виховання",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 195,
+          "ects": 6.5,
+          "auditoryHours": 74,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 121,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 47
+        },
+        {
+          "code": "ОК9",
+          "name": "* Громадянська освіта",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 46,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 44,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 48
+        }
+      ],
+      "subtotal": {
+        "label": "Всього",
+        "totalHours": 855,
+        "ects": 28.5,
+        "sourceRow": 49
+      },
+      "sourceRow": 39
+    },
+    {
+      "name": "Освітні компоненти, що формують спеціальні компетентності",
+      "part": "PROFESSIONAL",
+      "components": [
+        {
+          "code": "ОК10",
+          "name": "Охорона праці та безпека життєдіяльності",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            5
+          ],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 120,
+          "ects": 4,
+          "auditoryHours": 64,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 56,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 64,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 51
+        },
+        {
+          "code": "ОК11",
+          "name": "Математичне програмування",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            4
+          ],
+          "creditSemesters": [
+            3
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 360,
+          "ects": 12,
+          "auditoryHours": 222,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 138,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 3,
+              "hours": 96,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 126,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 52
+        },
+        {
+          "code": "ОК12",
+          "name": "Алгоритмізація та програмування",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            4
+          ],
+          "creditSemesters": [
+            3
+          ],
+          "courseWorkSemesters": [
+            4
+          ],
+          "rawExam": null,
+          "totalHours": 270,
+          "ects": 8,
+          "auditoryHours": 185,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 85,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 3,
+              "hours": 80,
+              "hoursPerWeek": 5
+            },
+            {
+              "semesterNumber": 4,
+              "hours": 105,
+              "hoursPerWeek": 5
+            }
+          ],
+          "sourceRow": 53
+        },
+        {
+          "code": "ОК13",
+          "name": "Об′єктно-орієнтоване програмування",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            6
+          ],
+          "creditSemesters": [
+            5
+          ],
+          "courseWorkSemesters": [
+            6
+          ],
+          "rawExam": null,
+          "totalHours": 360,
+          "ects": 12,
+          "auditoryHours": 222,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 138,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 96,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 6,
+              "hours": 126,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 54
+        },
+        {
+          "code": "ОК14",
+          "name": "Комп′ютерні мережі",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            6
+          ],
+          "creditSemesters": [
+            5
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 150,
+          "ects": 5,
+          "auditoryHours": 74,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 76,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 32,
+              "hoursPerWeek": 2
+            },
+            {
+              "semesterNumber": 6,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 55
+        },
+        {
+          "code": "ОК15",
+          "name": "WEB-технології та WEB-дизайн",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            8
+          ],
+          "creditSemesters": [
+            7
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 270,
+          "ects": 9,
+          "auditoryHours": 150,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 120,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 7,
+              "hours": 78,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 8,
+              "hours": 72,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 56
+        },
+        {
+          "code": "ОК16",
+          "name": "Архітектура комп′ютерів",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            5
+          ],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 195,
+          "ects": 6.5,
+          "auditoryHours": 96,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 99,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 96,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 57
+        },
+        {
+          "code": "ОК17",
+          "name": "Технології створення програмних продуктів",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            8
+          ],
+          "creditSemesters": [
+            7
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 270,
+          "ects": 9,
+          "auditoryHours": 150,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 120,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 7,
+              "hours": 78,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 8,
+              "hours": 72,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 58
+        },
+        {
+          "code": "ОК18",
+          "name": "Організація баз даних та знань",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            7
+          ],
+          "creditSemesters": [
+            6
+          ],
+          "courseWorkSemesters": [
+            7
+          ],
+          "rawExam": null,
+          "totalHours": 270,
+          "ects": 9,
+          "auditoryHours": 165,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 105,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 6,
+              "hours": 126,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 7,
+              "hours": 39,
+              "hoursPerWeek": 3
+            }
+          ],
+          "sourceRow": 59
+        },
+        {
+          "code": "ОК19",
+          "name": "Економіка ІТ-бізнесу",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            8
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 180,
+          "ects": 6,
+          "auditoryHours": 72,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 108,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 8,
+              "hours": 72,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 60
+        },
+        {
+          "code": "ОК20",
+          "name": "Адміністрування програмних систем і комплексів",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            7
+          ],
+          "creditSemesters": [
+            6
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 240,
+          "ects": 8,
+          "auditoryHours": 144,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 96,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 6,
+              "hours": 105,
+              "hoursPerWeek": 5
+            },
+            {
+              "semesterNumber": 7,
+              "hours": 39,
+              "hoursPerWeek": 3
+            }
+          ],
+          "sourceRow": 61
+        },
+        {
+          "code": "ОК21",
+          "name": "Розробка клієнт-серверних застосувань",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            8
+          ],
+          "creditSemesters": [
+            7
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 300,
+          "ects": 10,
+          "auditoryHours": 150,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 150,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 7,
+              "hours": 78,
+              "hoursPerWeek": 6
+            },
+            {
+              "semesterNumber": 8,
+              "hours": 72,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 62
+        },
+        {
+          "code": "ОК22",
+          "name": "Офісне програмне забезпечення",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            6
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 210,
+          "ects": 7,
+          "auditoryHours": 84,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 126,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 6,
+              "hours": 84,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 63
+        },
+        {
+          "code": "ОК23",
+          "name": "Алгоритми та структури даних",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [
+            5
+          ],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 150,
+          "ects": 5,
+          "auditoryHours": 64,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 86,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 64,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 64
+        },
+        {
+          "code": "ОК24",
+          "name": "Технологічна практика",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            7
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 135,
+          "ects": 4.5,
+          "auditoryHours": 90,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 45,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 7,
+              "hours": 90,
+              "hoursPerWeek": null
+            }
+          ],
+          "sourceRow": 66
+        },
+        {
+          "code": "ОК25",
+          "name": "Переддипломна практика",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            8
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 135,
+          "ects": 4.5,
+          "auditoryHours": 90,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 45,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 8,
+              "hours": 90,
+              "hoursPerWeek": null
+            }
+          ],
+          "sourceRow": 67
+        },
+        {
+          "code": "ОК26",
+          "name": "Дипломне проектування",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [
+            8
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 270,
+          "ects": 9,
+          "auditoryHours": 270,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 0,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 8,
+              "hours": 270,
+              "hoursPerWeek": null
+            }
+          ],
+          "sourceRow": 69
+        },
+        {
+          "code": "ОК27",
+          "name": "Захист кваліфікаційної роботи",
+          "isElectivePlaceholder": false,
+          "isElective": false,
+          "electiveGroupCode": null,
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 90,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 0,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 70
+        }
+      ],
+      "subtotal": {
+        "label": "Всього обовязкові компоненти",
+        "totalHours": 4830,
+        "ects": 161,
+        "sourceRow": 72
+      },
+      "sourceRow": 50
+    },
+    {
+      "name": "Освітні компоненти за вибором",
+      "part": "PROFESSIONAL",
+      "components": [],
+      "subtotal": null,
+      "sourceRow": 73
+    },
+    {
+      "name": "Освітні компоненти за вибором здобувача освіти",
+      "part": "PROFESSIONAL",
+      "components": [
+        {
+          "code": "ВК28",
+          "name": "Програмування мовою Рython",
+          "isElectivePlaceholder": false,
+          "isElective": true,
+          "electiveGroupCode": "ВК28",
+          "examSemesters": [],
+          "creditSemesters": [
+            7
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 120,
+          "ects": 4,
+          "auditoryHours": 78,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 42,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 7,
+              "hours": 78,
+              "hoursPerWeek": 6
+            }
+          ],
+          "sourceRow": 75
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 2",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК28",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 76
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 3",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК28",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 77
+        },
+        {
+          "code": "ВК29",
+          "name": "Програмування Інтернет речей (IoT)",
+          "isElectivePlaceholder": false,
+          "isElective": true,
+          "electiveGroupCode": "ВК29",
+          "examSemesters": [],
+          "creditSemesters": [
+            4
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 120,
+          "ects": 4,
+          "auditoryHours": 84,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 36,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 4,
+              "hours": 84,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 78
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 2",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК29",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 79
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 3",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК29",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 80
+        },
+        {
+          "code": "ВК30",
+          "name": "Штучний інтелект та машинне навчання",
+          "isElectivePlaceholder": false,
+          "isElective": true,
+          "electiveGroupCode": "ВК30",
+          "examSemesters": [],
+          "creditSemesters": [
+            6
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 42,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 48,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 6,
+              "hours": 42,
+              "hoursPerWeek": 2
+            }
+          ],
+          "sourceRow": 81
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 2",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК30",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 82
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 3",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК30",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 83
+        },
+        {
+          "code": "ВК31",
+          "name": "Вступ до кібербезпеки",
+          "isElectivePlaceholder": false,
+          "isElective": true,
+          "electiveGroupCode": "ВК31",
+          "examSemesters": [],
+          "creditSemesters": [
+            5
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 150,
+          "ects": 5,
+          "auditoryHours": 64,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 86,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 5,
+              "hours": 64,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 84
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 2",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК31",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 85
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 3",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК31",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 86
+        },
+        {
+          "code": "ВК32",
+          "name": "Тестування програмних систем і комплексів",
+          "isElectivePlaceholder": false,
+          "isElective": true,
+          "electiveGroupCode": "ВК32",
+          "examSemesters": [],
+          "creditSemesters": [
+            8
+          ],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": 90,
+          "ects": 3,
+          "auditoryHours": 48,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": 42,
+          "otherHours": null,
+          "terms": [
+            {
+              "semesterNumber": 8,
+              "hours": 48,
+              "hoursPerWeek": 4
+            }
+          ],
+          "sourceRow": 87
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 2",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК32",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 88
+        },
+        {
+          "code": null,
+          "name": "Дисципліна 3",
+          "isElectivePlaceholder": true,
+          "isElective": true,
+          "electiveGroupCode": "ВК32",
+          "examSemesters": [],
+          "creditSemesters": [],
+          "courseWorkSemesters": [],
+          "rawExam": null,
+          "totalHours": null,
+          "ects": null,
+          "auditoryHours": null,
+          "lectureHours": null,
+          "practicalHours": null,
+          "seminarHours": null,
+          "labHours": null,
+          "selfStudyHours": null,
+          "otherHours": null,
+          "terms": [],
+          "sourceRow": 89
+        }
+      ],
+      "subtotal": {
+        "label": "Всього підготовки фахового молодшого бакалавра за ОПП",
+        "totalHours": 5400,
+        "ects": 180,
+        "sourceRow": 91
+      },
+      "sourceRow": 74
+    }
+  ],
+  "timeBudget": [
+    {
+      "courseLabel": "І",
+      "theoryWeeks": 40,
+      "sessionWeeks": null,
+      "practiceWeeks": null,
+      "attestationWeeks": null,
+      "holidayWeeks": 12,
+      "totalWeeks": 52
+    },
+    {
+      "courseLabel": "ІІ",
+      "theoryWeeks": 37,
+      "sessionWeeks": 1,
+      "practiceWeeks": null,
+      "attestationWeeks": 2,
+      "holidayWeeks": 12,
+      "totalWeeks": 52
+    },
+    {
+      "courseLabel": "ІІІ",
+      "theoryWeeks": 37,
+      "sessionWeeks": 3,
+      "practiceWeeks": null,
+      "attestationWeeks": null,
+      "holidayWeeks": 12,
+      "totalWeeks": 52
+    },
+    {
+      "courseLabel": "IV",
+      "theoryWeeks": 25,
+      "sessionWeeks": 2,
+      "practiceWeeks": null,
+      "attestationWeeks": 8,
+      "holidayWeeks": 2,
+      "totalWeeks": 43
+    },
+    {
+      "courseLabel": "Всього",
+      "theoryWeeks": 139,
+      "sessionWeeks": 6,
+      "practiceWeeks": null,
+      "attestationWeeks": 10,
+      "holidayWeeks": 38,
+      "totalWeeks": 199
+    }
+  ],
+  "warnings": []
+}

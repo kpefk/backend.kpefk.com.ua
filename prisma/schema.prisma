@@ -29,9 +29,14 @@ model User {
   isFirstLogin Boolean @default(true) @map("is_first_login")
   isActive     Boolean @default(true) @map("is_active")
 
-  tokens  Token[]
-  student Student?
-  teacher Teacher?
+  tokens                  Token[]
+  student                 Student?
+  teacher                 Teacher?
+  assignedSubjectAssignments TeacherLoadSubjectAssignment[] @relation("SubjectAssignedBy")
+  signedSubjectAssignments   TeacherLoadSubjectAssignment[] @relation("SubjectSignedByDirector")
+  electiveSelectionsConfirmed StudentElectiveSelection[]    @relation("ElectiveSelectionConfirmedBy")
+  parentInfoUpdates       ParentInfo[]
+  auditLogs               AuditLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -46,6 +51,9 @@ model Token {
   token     String    @unique
   type      TokenType
   expiresIn DateTime  @map("expires_in")
+
+  // Нова email-адреса для підтвердження зміни (лише для type = EMAIL_CHANGE)
+  newEmail String? @map("new_email")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @map("user_id")
@@ -70,6 +78,7 @@ enum UserRole {
 enum TokenType {
   TWO_FACTOR     // Two-factor authentication
   PASSWORD_RESET // Password reset
+  EMAIL_CHANGE   // Email change confirmation
 }
 
 /// Стан інкрементальної синхронізації з ЄДЕБО.
@@ -113,9 +122,10 @@ model Student {
   historyTypeId            Int      @map("history_type_id")
 
   // Персональні дані
-  personFIO     String   @map("person_fio")     // ПІБ
-  birthday      DateTime?                        // Дата народження
-  personSexName String?  @map("person_sex_name") // Стать
+  personFIO     String   @map("person_fio")      // ПІБ
+  personNameEn  String?  @map("person_name_en")  // ПІБ транслітерацією (з ЄДЕБО)
+  birthday      DateTime?                         // Дата народження
+  personSexName String?  @map("person_sex_name")  // Стать
 
   // Навчання
   licenseYear          Int?      @map("license_year")           // Рік ліцензійних обсягів
@@ -126,6 +136,7 @@ model Student {
   qualificationGroupName String? @map("qualification_group_name") // Освітній ступінь (назва)
   educationFormId      Int?      @map("education_form_id")      // Форма навчання (Id)
   educationFormName    String?   @map("education_form_name")    // Форма навчання (назва)
+  personEducationPaymentTypeName String? @map("person_education_payment_type_name") // Джерело фінансування (державна/контракт)
   isDualForm           Boolean?  @map("is_dual_form")           // Дуальна форма навчання
   isSecondHigher       Boolean?  @map("is_second_higher")       // Здобуття за іншою спеціальністю
   isShortTerm          Boolean?  @map("is_short_term")          // Скорочений термін
@@ -165,6 +176,9 @@ model Student {
   passportSeries             String? @map("passport_series")              // Серія паспорта
   passportNumbers            String? @map("passport_numbers")             // Номер паспорта
 
+  // Корпоративна пошта Google Workspace
+  corporateEmail String? @unique @map("corporate_email") // Згенерована корпоративна пошта
+
   // Службові поля
   createdAt  DateTime  @default(now()) @map("created_at")
   modifyDate DateTime? @map("modify_date") // Дата останнього редагування в ЄДЕБО
@@ -172,8 +186,11 @@ model Student {
   groupHistory StudentGroupHistory[]
 
   // Curriculum domain (back-relations — no new columns)
-  individualPlan     StudentIndividualPlan?
-  electiveSelections StudentElectiveSelection[]
+  individualPlan        StudentIndividualPlan?
+  electiveSelections    StudentElectiveSelection[]
+  electiveRegistrations ElectiveRegistration[]
+
+  parentInfo ParentInfo?
 
   @@map("students")
 }
@@ -195,6 +212,7 @@ model Group {
   // Curriculum domain (back-relations — no new columns)
   curriculumAssignments        GroupCurriculumAssignment[]
   workingCurriculumAssignments GroupWorkingCurriculumAssignment[]
+  subjectAssignments           TeacherLoadSubjectAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -281,10 +299,62 @@ model Teacher {
   createdAt  DateTime  @default(now()) @map("created_at")
   modifyDate DateTime? @map("modify_date") // Дата останньої зміни в ЄДЕБО
 
-  classrooms Classroom[]
-  group      Group?
+  /// Ставка викладача (0.25 / 0.5 / 0.75 / 1.0 / 1.25 / 1.5).
+  /// Пропорційно визначає ліміт навчального навантаження: 720 × rate год/рік.
+  rate Decimal @default(1.0) @db.Decimal(3, 2)
+
+  classrooms                 Classroom[]
+  group                      Group?
+  workingComponentTerms      WorkingCurriculumComponentTerm[]
+  primarySubjectAssignments  TeacherLoadSubjectAssignment[]    @relation("SubjectPrimaryTeacher")
+  lessonOverrideAssignments  TeacherLoadLessonAssignment[]     @relation("LessonOverrideTeacher")
+  qualificationUpgrades      TeacherQualificationUpgrade[]
 
   @@map("teachers")
+}
+
+enum QualificationUpgradeSource {
+  EDEBO_PARSED /// Авто-розпарсено з Teacher.coursesInfo (ЄДЕБО)
+  MANUAL       /// Введено вручну адміністратором
+}
+
+/// Підвищення кваліфікації педагогічного працівника.
+/// Ст. 24 Закону №2745-VIII: кожен педагогічний працівник зобов'язаний підвищувати
+/// кваліфікацію не рідше одного разу на 5 років. Обсяг — не менше 120 годин за 5 років.
+model TeacherQualificationUpgrade {
+  id String @id @default(uuid())
+
+  teacherId String  @map("teacher_id")
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  /// Джерело запису: EDEBO_PARSED = авто з coursesInfo; MANUAL = введено адміністратором
+  source QualificationUpgradeSource @default(MANUAL)
+
+  /// Оригінальний фрагмент тексту (для EDEBO_PARSED — вихідний рядок запису)
+  rawText String? @map("raw_text")
+
+  /// Назва курсу / заходу підвищення кваліфікації
+  courseName String @map("course_name")
+
+  /// Назва організації, що проводила підвищення кваліфікації
+  organizationName String? @map("organization_name")
+
+  /// Дата початку
+  startDate DateTime @map("start_date")
+
+  /// Дата закінчення
+  endDate DateTime @map("end_date")
+
+  /// Обсяг у годинах (≥ 120 год за 5 років)
+  hours Int
+
+  /// Серія та номер свідоцтва / сертифіката
+  certificateNumber String? @map("certificate_number")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("teacher_qualification_upgrades")
 }
 
 /// Model for classrooms
@@ -458,8 +528,13 @@ model EducationalProgram {
   // ── Поля, заповнювані при синхронізації з ЄДЕБО ──────────────────────────
   studyProgramNameEn         String?   @map("study_program_name_en")
   qualificationGroupId       Int?      @map("qualification_group_id")
+  qualificationGroupName     String?   @map("qualification_group_name")
   universitySpecializationId Int?      @map("university_specialization_id")
   specializationName         String?   @map("specialization_name")
+  /// 1 = Акредитовано ОП, 2 = Акредитовано спеціальність, null = не акредитовано
+  accreditationExistsType    Int?      @map("accreditation_exists_type")
+  accreditationExistsTypeName String?  @map("accreditation_exists_type_name")
+  edeboDateLastChange        DateTime? @map("edebo_date_last_change")
   /// Час останньої успішної синхронізації з ЄДЕБО
   syncedAt                   DateTime? @map("synced_at")
 
@@ -512,9 +587,12 @@ model CurriculumVersion {
   curriculum          Curriculum @relation(fields: [curriculumId], references: [id])
 
   versionNumber       Int      @map("version_number")
-  approvalDate        DateTime @map("approval_date")
-  approvalOrderNumber String   @map("approval_order_number")
-  approvedBy          String   @map("approved_by")
+  // Метадані затвердження зберігаються опційно: плани заходять у систему вже
+  // офіційно затвердженими, тож введення цих полів не вимагається. Колонки
+  // лишаємо для майбутніх друкованих витягів/звітності.
+  approvalDate        DateTime? @map("approval_date")
+  approvalOrderNumber String?   @map("approval_order_number")
+  approvedBy          String?   @map("approved_by")
   isPublished         Boolean  @default(false) @map("is_published")
   publishedAt         DateTime? @map("published_at")
   deprecatedAt        DateTime? @map("deprecated_at") // null = ще актуальна
@@ -569,9 +647,9 @@ model ElectiveBlock {
   maxSelections  Int    @default(1) @map("max_selections")
   orderIndex     Int    @map("order_index")
 
-  options           CurriculumComponent[]
-  groupSelections   GroupElectiveSelection[]
-  studentSelections StudentElectiveSelection[]
+  options         CurriculumComponent[]
+  groupSelections GroupElectiveSelection[]
+  seasons         ElectiveBlockSeason[]
 
   @@index([sectionId])
   @@map("elective_blocks")
@@ -626,7 +704,8 @@ model CurriculumComponent {
   terms              CurriculumComponentTerm[]
   planItems          StudentIndividualPlanItem[]
   groupSelections    GroupElectiveSelection[]
-  studentSelections  StudentElectiveSelection[]
+  offerings          ElectiveOffering[]
+  electiveSelections StudentElectiveSelection[]
   displayProjections CurriculumComponentDisplayInSection[]
 
   @@index([sectionId])
@@ -651,7 +730,18 @@ model CurriculumComponentTerm {
   hasCourseWork    Boolean          @default(false) @map("has_course_work")
   hasCourseProject Boolean          @default(false) @map("has_course_project")
 
-  workingTerms WorkingCurriculumComponentTerm[]
+  /// Кількість підгруп для практичних / лабораторних занять.
+  /// 1 = не ділиться на підгрупи; 2+ = кількість підгруп.
+  subgroupCount Int @default(1) @map("subgroup_count")
+
+  /// Текстова підстава для поділу на підгрупи (напр. «Наказ №12 від...»
+  /// або «Вимоги техніки безпеки»). Опційно; відображається в листку навантаження.
+  subgroupJustification String? @map("subgroup_justification")
+
+  workingTerms       WorkingCurriculumComponentTerm[]
+  subjectAssignments TeacherLoadSubjectAssignment[]
+  /// @deprecated back-relation для ElectiveComponent.curriculumTermId (deprecated)
+  electiveComponent  ElectiveComponent?
 
   @@unique([componentId, semesterNumber])
   @@index([componentId])
@@ -770,8 +860,23 @@ model WorkingCurriculum {
   approvedAt      DateTime? @map("approved_at")
   notes           String?
 
-  componentTerms   WorkingCurriculumComponentTerm[]
-  groupAssignments GroupWorkingCurriculumAssignment[]
+  /// Дата засідання педагогічної ради, на якій затверджено РНП (Ст. 37 Закону №2745-VIII).
+  /// null = рішення педради ще не зафіксовано.
+  pedagogicalCouncilDate           DateTime? @map("pedagogical_council_date")
+  /// Номер протоколу засідання педагогічної ради.
+  pedagogicalCouncilProtocolNumber String?   @map("pedagogical_council_protocol_number")
+
+  /// Дата погодження навантаження з профспілковим комітетом (Ст. 60 п.5 №2745-VIII).
+  /// null = погодження ще не зафіксовано.
+  tradeUnionApprovedAt     DateTime? @map("trade_union_approved_at")
+  /// Номер протоколу засідання профспілкового комітету.
+  tradeUnionProtocolNumber String?   @map("trade_union_protocol_number")
+
+  componentTerms     WorkingCurriculumComponentTerm[]
+  subjectAssignments TeacherLoadSubjectAssignment[]
+  /// Snapshot-layer: explicit group bindings recorded at assignment time.
+  /// For live/current group membership use GroupCurriculumAssignment WHERE versionId AND isActive.
+  groupSnapshots GroupWorkingCurriculumAssignment[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -801,8 +906,19 @@ model WorkingCurriculumComponentTerm {
   weeklyLectureHours   Decimal? @map("weekly_lecture_hours")   @db.Decimal(4, 1)
   weeklyPracticalHours Decimal? @map("weekly_practical_hours") @db.Decimal(4, 1)
 
+  /// Режим розподілу практичних/лабораторних: потік чи окремо на кожну групу.
+  /// Лекції/семінари/консультації/СПРС завжди потокові — для них режим не застосовується.
+  practiceMode LoadDistributionMode @default(STREAM) @map("practice_mode")
+  labMode      LoadDistributionMode @default(STREAM) @map("lab_mode")
+
+  /// Відповідальний викладач за цей компонент у даному семестрі.
+  /// null = викладач ще не призначений.
+  teacherId String?  @map("teacher_id")
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
   @@unique([workingCurriculumId, componentTermId])
   @@index([workingCurriculumId])
+  @@index([teacherId])
   @@map("working_curriculum_component_terms")
 }
 
@@ -820,6 +936,7 @@ model GroupWorkingCurriculumAssignment {
   assignment          GroupCurriculumAssignment @relation(fields: [assignmentId], references: [id])
 
   academicYear String  @map("academic_year")
+  /// Reserved: always true. No deactivation workflow exists yet.
   isActive     Boolean @default(true) @map("is_active")
   assignedBy   String? @map("assigned_by")
 
@@ -832,7 +949,9 @@ model GroupWorkingCurriculumAssignment {
 
 // ─── Electives ────────────────────────────────────────────────────────────────
 
-/// Вибір вибіркового компонента на рівні групи (загальний вибір)
+/// Підсумок вибору ВК на рівні групи (§3.6, §3.9 Положення).
+/// З моменту створення цього запису ВК стає обов'язковим для групи
+/// і підлягає внесенню до робочого навчального плану (§3.10).
 model GroupElectiveSelection {
   id           String                    @id @default(uuid())
   blockId      String                    @map("block_id")
@@ -842,28 +961,59 @@ model GroupElectiveSelection {
   assignmentId String                    @map("assignment_id")
   assignment   GroupCurriculumAssignment @relation(fields: [assignmentId], references: [id])
 
+  /// Сезон (блок × рік), у межах якого зафіксовано підсумок.
+  /// null = запис створений до впровадження сезонної фіксації (legacy).
+  seasonId String?              @map("season_id")
+  season   ElectiveBlockSeason? @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+
+  /// §3.4 — реквізити наказу, якщо підсумок зафіксовано наказом
+  /// (кворум 75% не досягнуто або студенти не подали заяв). null = кворум заявами.
+  orderNumber String?   @map("order_number")
+  orderDate   DateTime? @map("order_date")
+
   selectedAt DateTime @default(now()) @map("selected_at")
   selectedBy String?  @map("selected_by") // userId
 
   @@unique([blockId, assignmentId])
   @@index([assignmentId])
+  @@index([seasonId])
   @@map("group_elective_selections")
 }
 
-/// Індивідуальний вибір вибіркового компонента студентом (override групового)
+/// Канонічний запис вибору ВК студентом.
+/// ЄДИНЕ джерело істини для student selection — не дублюється в ElectiveRegistration.
+///
+/// seasonId → ElectiveBlockSeason → ElectiveBlock (слот плану) + academicYear.
+/// academicYear — denormalized від season.academicYear для ефективної фільтрації без JOIN.
+/// componentId → CurriculumComponent: обраний варіант (назва, год., кредити з CurriculumComponentTerm).
 model StudentElectiveSelection {
   id          String              @id @default(uuid())
-  blockId     String              @map("block_id")
-  block       ElectiveBlock       @relation(fields: [blockId], references: [id])
-  componentId String              @map("component_id")
-  component   CurriculumComponent @relation(fields: [componentId], references: [id])
   studentId   String              @map("student_id")
   student     Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  overrideReason String?  @map("override_reason")
-  selectedAt     DateTime @default(now()) @map("selected_at")
+  /// Canonical reference: season.blockId = слот, season.academicYear = рік
+  seasonId    String              @map("season_id")
+  season      ElectiveBlockSeason @relation(fields: [seasonId], references: [id], onDelete: Restrict)
 
-  @@unique([blockId, studentId])
+  /// Обраний варіант дисципліни (один з season.offerings[].component)
+  componentId String              @map("component_id")
+  component   CurriculumComponent @relation(fields: [componentId], references: [id], onDelete: Restrict)
+
+  /// Denormalized від season.academicYear — тільки для ефективних запитів
+  academicYear String             @map("academic_year")
+
+  method         SelectionMethod  @default(VOLUNTARY)
+  status         SelectionStatus  @default(PENDING)
+  overrideReason String?          @map("override_reason")
+
+  // Audit trail
+  submittedAt   DateTime  @default(now()) @map("submitted_at")
+  confirmedAt   DateTime? @map("confirmed_at")
+  confirmedById String? @map("confirmed_by_id")
+  confirmedBy   User?   @relation("ElectiveSelectionConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, seasonId])
+  @@index([seasonId])
   @@index([studentId])
   @@map("student_elective_selections")
 }
@@ -906,4 +1056,369 @@ model StudentIndividualPlanItem {
 
   @@index([planId])
   @@map("student_individual_plan_items")
+}
+
+// ─── Elective Components: Catalog + Student Registration ─────────────────────
+
+/// Статус каталогу ВК на поточний навчальний рік.
+/// Положення КПЕФК від 01.09.2023, наказ №30-од.
+enum CatalogStatus {
+  DRAFT  /// Підготовка (до 1 березня): каталог не публікується студентам
+  OPEN   /// Вибір відкрито (1 квітня – 15 травня)
+  LATE   /// Продовжений вибір за поважних причин (15 травня – 1 червня)
+  CLOSED /// Вибір завершено (після 1 червня)
+}
+
+/// Спосіб, яким студент отримав ВК (§3.4, §3.5, Додаток 3 Положення).
+enum SelectionMethod {
+  VOLUNTARY /// Студент обрав самостійно — "Заява"
+  ASSIGNED  /// Призначено адміністратором — "Наказ"
+}
+
+/// Стан реєстрації студента на ВК.
+enum SelectionStatus {
+  PENDING   /// Очікує підтвердження (під час OPEN/LATE)
+  CONFIRMED /// Підтверджено після 1 червня (§3.9)
+  CANCELLED /// Скасовано студентом під час OPEN
+}
+
+// ─── Elective Season (річна кампанія вибору) ─────────────────────────────────
+
+/// Річна кампанія вибору ВК (§2.4, §3.1–3.9 Положення КПЕФК).
+/// Один запис = один цільовий навчальний рік (рік, НА який обираються ВК).
+/// Каталог затверджується педрадою і вводиться наказом директора щороку —
+/// метадані цих документів зберігаються тут.
+/// Статус кампанії є джерелом істини для bulk-переходів статусів
+/// усіх прив'язаних ElectiveBlockSeason.
+model ElectiveSeason {
+  id           String        @id @default(uuid())
+  /// Цільовий навчальний рік, на який здійснюється вибір ("2026-2027")
+  academicYear String        @unique @map("academic_year")
+  status       CatalogStatus @default(DRAFT)
+
+  /// §3.2 — дата публікації каталогу на сайті (до 01 квітня)
+  publishedAt       DateTime? @map("published_at")
+  /// §3.4 — дедлайн подачі заяв (15 травня)
+  selectionDeadline DateTime? @map("selection_deadline")
+  /// §3.8 — дедлайн пізнього вибору з поважних причин (01 червня)
+  lateDeadline      DateTime? @map("late_deadline")
+
+  /// §2.4 — затвердження каталогу педагогічною радою
+  pedagogicalCouncilDate           DateTime? @map("pedagogical_council_date")
+  pedagogicalCouncilProtocolNumber String?   @map("pedagogical_council_protocol_number")
+  /// §2.4 — наказ директора про введення каталогу в дію
+  directorOrderNumber String?   @map("director_order_number")
+  directorOrderDate   DateTime? @map("director_order_date")
+
+  notes String?
+
+  blockSeasons ElectiveBlockSeason[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("elective_seasons")
+}
+
+// ─── Elective Block Season + Offering (нова архітектура) ─────────────────────
+
+/// Публікація ElectiveBlock (слоту плану) на конкретний навчальний рік.
+/// Один запис = один слот × один рік. catalogStatus відкриває/закриває вибір.
+/// Параметри (кредити, години, форма контролю) беруться з CurriculumComponentTerm
+/// відповідних компонентів, що входять до block.options.
+model ElectiveBlockSeason {
+  id            String        @id @default(uuid())
+  blockId       String        @map("block_id")
+  block         ElectiveBlock @relation(fields: [blockId], references: [id], onDelete: Restrict)
+  academicYear  String        @map("academic_year")  // "2025-2026"
+  catalogStatus CatalogStatus @default(DRAFT)        @map("catalog_status")
+
+  /// Річна кампанія, в межах якої створено цей block-сезон.
+  /// null = створений вручну до впровадження кампаній (legacy).
+  electiveSeasonId String?         @map("elective_season_id")
+  electiveSeason   ElectiveSeason? @relation(fields: [electiveSeasonId], references: [id], onDelete: SetNull)
+
+  offerings       ElectiveOffering[]
+  selections      StudentElectiveSelection[]
+  groupSelections GroupElectiveSelection[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([blockId, academicYear])
+  @@index([academicYear])
+  @@map("elective_block_seasons")
+}
+
+/// Конкретна дисципліна, доступна студентам у межах сезону (ElectiveBlockSeason).
+/// SOURCE OF TRUTH для назви — component.name.
+/// SOURCE OF TRUTH для кредитів/годин/форми контролю — component.terms[semester].
+/// Тут лише каталогові метадані: силабус, примітка, позначка вищої освіти.
+model ElectiveOffering {
+  id          String              @id @default(uuid())
+  seasonId    String              @map("season_id")
+  season      ElectiveBlockSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  componentId String              @map("component_id")
+  component   CurriculumComponent @relation(fields: [componentId], references: [id], onDelete: Restrict)
+
+  syllabusUrl String?  @map("syllabus_url")
+  isHigherEd  Boolean  @default(false) @map("is_higher_ed")
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([seasonId, componentId])
+  @@index([seasonId])
+  @@map("elective_offerings")
+}
+
+// ─── DEPRECATED: замінено ElectiveBlockSeason + ElectiveOffering ─────────────
+// ElectiveComponent і ElectiveRegistration залишені тимчасово для backward compat.
+// Будуть видалені після повного переходу backend і frontend на нову архітектуру.
+
+/// @deprecated — використовуйте ElectiveOffering. Буде видалено.
+model ElectiveComponent {
+  id           String @id @default(uuid())
+  name         String
+  oppCode      String @map("opp_code")       // "122", "073", "071" …
+  oppName      String @map("opp_name")
+  semester     Int                            // 4 або 5 (§3.3)
+  ectsCredits  Int    @map("ects_credits")
+  cyclicComm   String @map("cyclic_comm")     // Циклова комісія
+  syllabusUrl  String? @map("syllabus_url")
+  academicYear String @map("academic_year")   // "2024-2025"
+
+  /// §1.11 — позначка для ВК вищої освіти (потребує дозволу директора)
+  isHigherEd    Boolean       @default(false) @map("is_higher_ed")
+  catalogStatus CatalogStatus @default(DRAFT) @map("catalog_status")
+
+  /// Прив'язка до терму навчального плану для авто-заповнення кредитів/годин/форми контролю.
+  /// null = адмін вводить ectsCredits вручну (перехідний період).
+  curriculumTermId String?                  @unique @map("curriculum_term_id")
+  curriculumTerm   CurriculumComponentTerm? @relation(fields: [curriculumTermId], references: [id], onDelete: SetNull)
+
+  registrations ElectiveRegistration[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([oppCode, academicYear])
+  @@map("elective_components")
+}
+
+/// @deprecated — використовуйте StudentElectiveSelection. Буде видалено.
+model ElectiveRegistration {
+  id         String @id @default(uuid())
+  studentId  String @map("student_id")
+  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  electiveId String @map("elective_id")
+  elective   ElectiveComponent @relation(fields: [electiveId], references: [id], onDelete: Cascade)
+
+  academicYear String @map("academic_year")
+  semester     Int
+
+  method      SelectionMethod
+  status      SelectionStatus @default(PENDING)
+  submittedAt DateTime        @default(now()) @map("submitted_at")
+  confirmedAt DateTime?       @map("confirmed_at")
+
+  /// userId адміністратора, якщо method=ASSIGNED
+  confirmedBy String? @map("confirmed_by")
+
+  /// §1.11 — чи є підтвердження директора для ВК вищої освіти
+  directorApproved Boolean @default(false) @map("director_approved")
+
+  @@unique([studentId, academicYear, semester])
+  @@index([electiveId])
+  @@index([studentId])
+  @@map("elective_registrations")
+}
+
+// ─── Teacher Load: Subject + Lesson Assignments ───────────────────────────────
+
+/// Вид заняття для призначення педагогічного навантаження.
+///
+/// Законодавча основа: Наказ МОН №686 від 18.06.2021, зі змінами Наказу №472 від 24.05.2022.
+///
+/// Нормовані Наказом №686 (входять у 720 год/ставку):
+///   LECTURE      → п.4  «Лекція»
+///   PRACTICE     → п.5  «Практичне заняття»
+///   LAB          → п.6  «Лабораторна робота»
+///   SEMINAR      → п.7  «Семінар»
+///   CONSULTATION → п.9  «Консультації протягом семестру» (2% обсягу — денна; 6% — заочна/дист.)
+///
+/// Внутрішній показник закладу (не нормований Наказом №686 як окремий вид):
+///   SPRS — «Самостійна робота студентів під керівництвом викладача».
+///   У Наказі №686 самостійна робота студентів (СРС) є часом студента і в навантаження
+///   викладача не входить. SPRS тут позначає години, які заклад самостійно відносить
+///   до навчальної роботи викладача (наприклад, перевірка СРС, індивідуальні консультації
+///   понад 2%, п.8 «Індивідуальне заняття»). Облік визначається внутрішнім положенням закладу.
+enum LessonType {
+  LECTURE      // Лекції              — Наказ МОН №686, п.4
+  PRACTICE     // Практичні заняття   — Наказ МОН №686, п.5
+  LAB          // Лабораторні роботи  — Наказ МОН №686, п.6
+  SEMINAR      // Семінари            — Наказ МОН №686, п.7
+  CONSULTATION // Консультації        — Наказ МОН №686, п.9 (2%/6% від обсягу дисципліни)
+  SPRS         // СПРС (внутрішній показник закладу; не окремий вид у Наказі №686)
+}
+
+/// Стан запису навантаження
+enum LoadStatus {
+  DRAFT     // Чернетка (редагується заступником директора)
+  CONFIRMED // Підтверджено наказом директора
+}
+
+/// Режим розподілу практичних / лабораторних занять.
+/// STREAM    — потоковий формат: один викладач на всі групи потоку (×1 годин).
+/// PER_GROUP — окремо на кожну активну групу (×groupCount годин, різні викладачі).
+/// Лекції/семінари/консультації/СПРС — завжди потокові (Наказ МОН №686).
+enum LoadDistributionMode {
+  STREAM
+  PER_GROUP
+}
+
+/// Призначення навантаження на рівні освітнього компонента (ОК).
+///
+/// Один запис на (workingCurriculum × componentTerm × group).
+/// group = null → потоковий формат (лекції для всього потоку без конкретної групи).
+///
+/// primaryTeacherId = основний викладач ОК.
+/// Він веде всі види занять, для яких у TeacherLoadLessonAssignment немає override.
+/// effectiveTeacherId для кожного заняття = overrideTeacherId ?? primaryTeacherId.
+model TeacherLoadSubjectAssignment {
+  id String @id @default(uuid())
+
+  workingCurriculumId String            @map("working_curriculum_id")
+  workingCurriculum   WorkingCurriculum  @relation(fields: [workingCurriculumId], references: [id], onDelete: Cascade)
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+
+  /// null = потоковий (лекції); string = конкретна група
+  groupId String? @map("group_id")
+  group   Group?  @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  academicYear String @map("academic_year")
+
+  /// Основний викладач компонента. Якщо overrideTeacherId у lesson = null,
+  /// то effectiveTeacher = primaryTeacher.
+  primaryTeacherId String?  @map("primary_teacher_id")
+  primaryTeacher   Teacher? @relation("SubjectPrimaryTeacher", fields: [primaryTeacherId], references: [id], onDelete: SetNull)
+
+  /// UserId заступника директора, який здійснив генерацію / останнє оновлення
+  assignedById String @map("assigned_by_id")
+  assignedBy   User   @relation("SubjectAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+
+  /// UserId директора, який підписав наказ (null = ще не підтверджено)
+  signedByDirectorId String? @map("signed_by_director_id")
+  signedByDirector   User?   @relation("SubjectSignedByDirector", fields: [signedByDirectorId], references: [id], onDelete: SetNull)
+
+  status      LoadStatus @default(DRAFT)
+  orderNumber String?    @map("order_number")
+  orderDate   DateTime?  @map("order_date")
+
+  lessonAssignments TeacherLoadLessonAssignment[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([workingCurriculumId])
+  @@index([primaryTeacherId])
+  @@index([groupId])
+  @@index([status])
+  @@index([signedByDirectorId])
+  @@map("teacher_load_subject_assignments")
+}
+
+/// Деталізація навантаження по виду заняття в рамках TeacherLoadSubjectAssignment.
+///
+/// overrideTeacherId заповнюється лише тоді, коли конкретний вид заняття
+/// веде інший викладач, ніж primaryTeacher батьківського subject assignment.
+///
+/// effectiveTeacher обчислюється на backend (не зберігається в БД):
+///   effectiveTeacherId = overrideTeacherId ?? parent.primaryTeacherId
+model TeacherLoadLessonAssignment {
+  id String @id @default(uuid())
+
+  subjectAssignmentId String                       @map("subject_assignment_id")
+  subjectAssignment   TeacherLoadSubjectAssignment @relation(fields: [subjectAssignmentId], references: [id], onDelete: Cascade)
+
+  lessonType     LessonType @map("lesson_type")
+  /// null = вся група; 1/2/3 = конкретна підгрупа (якщо subgroupCount > 1)
+  subgroupNumber Int?       @map("subgroup_number")
+  /// Годин для цього виду заняття (raw, без множення на кількість груп)
+  hours          Int
+
+  /// Викладач-виняток для цього виду заняття.
+  /// null → використовується primaryTeacher батьківського subject assignment.
+  overrideTeacherId String?  @map("override_teacher_id")
+  overrideTeacher   Teacher? @relation("LessonOverrideTeacher", fields: [overrideTeacherId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([subjectAssignmentId])
+  @@index([overrideTeacherId])
+  @@map("teacher_load_lesson_assignments")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                        GROUP LEADER DOMAIN                                  ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Контактна інформація батьків / опікунів студента.
+/// Заповнюється керівником групи або адміністрацією.
+model ParentInfo {
+  id        String  @id @default(cuid())
+  studentId String  @unique @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  motherFullName  String? @map("mother_full_name")
+  motherPhone     String? @map("mother_phone")
+  motherWorkplace String? @map("mother_workplace")
+
+  fatherFullName  String? @map("father_full_name")
+  fatherPhone     String? @map("father_phone")
+  fatherWorkplace String? @map("father_workplace")
+
+  guardianFullName  String? @map("guardian_full_name")
+  guardianPhone     String? @map("guardian_phone")
+  guardianWorkplace String? @map("guardian_workplace")
+  /// "бабуся", "дядько" тощо
+  guardianRelation  String? @map("guardian_relation")
+
+  address String?
+  /// Приватні нотатки керівника групи (не видно студенту)
+  notes   String?
+
+  updatedById String? @map("updated_by_id")
+  updatedBy   User?   @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("parent_info")
+}
+
+/// Журнал адміністративних змін — write-операції з персональними даними.
+model AuditLog {
+  id         String @id @default(cuid())
+  userId     String @map("user_id")
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Тип дії: 'UPDATE_PARENT_INFO', тощо
+  action     String
+  /// Id цільової сутності (studentId, тощо)
+  targetId   String @map("target_id")
+  /// Тип цільової сутності: 'Student', тощо
+  targetType String @map("target_type")
+  ipAddress  String? @map("ip_address")
+  metadata   Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([targetId])
+  @@map("audit_logs")
 }

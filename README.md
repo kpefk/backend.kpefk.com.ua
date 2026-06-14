@@ -13,20 +13,24 @@
 
 ## Project overview
 
-**MyKPEFK** is the server-side of the information system for Kovel Industrial and Economic Vocational College of Lutsk NTU (KPEFK LNTU). It manages users (students, teachers, administration), academic groups, classroom inventory, and provides integration with the EDBO national education registry (ЄДЕБО). Student and teacher records are synchronized from EDBO on a daily schedule and can also be triggered manually via the API.
+**MyKPEFK** is the server-side of the information system for Kovel Industrial and Economic Vocational College of Lutsk NTU (KPEFK LNTU). It manages users (students, teachers, administration), academic groups, classroom inventory, curricula, teacher load assignments, electives, and provides integration with the EDBO national education registry (ЄДЕБО). Student and teacher records are synchronized from EDBO on a daily schedule and can also be triggered manually via the API.
 
 ---
 
 ## Main capabilities
 
-- **Authentication** — session-based auth, Google OAuth 2.0, two-factor authentication (2FA), password recovery
+- **Authentication** — session-based auth, Google OAuth 2.0, two-factor authentication (2FA: TOTP + email), password recovery
 - **Role-based access control** — seven roles from `STUDENT` to `ADMINISTRATOR`
-- **Students** — full profile synchronized from EDBO, document fields (RNOKPP, passport, student ticket)
-- **Teachers (Staff)** — full profile synchronized from EDBO, position, faculty, department
+- **Students** — full profile synchronized from EDBO, document fields (RNOKPP, passport, student ticket), corporate email
+- **Teachers (Staff)** — full profile synchronized from EDBO, position, faculty, department, rate (up to 1.5), qualification upgrades tracking
 - **Academic groups** — derived from student data during EDBO sync; curator assignment managed locally
 - **Group history** — tracks why and when a student moved between groups
 - **Classrooms** — classroom inventory with photos and Google Drive passport PDF
-- **EDBO synchronization** — incremental daily cron sync + manual trigger endpoints (admin only)
+- **Curriculum domain** — specialties, educational programs, curricula with versioning, sections, components, terms, time budget, academic calendar, elective blocks, group curriculum assignments
+- **Working curricula** — operational layer for specific academic year, with approval workflow (pedagogical council + trade union)
+- **Teacher load** — subject/lesson assignment generation from working curricula, order confirmation workflow, per-teacher load summary with 720×rate hour limit validation
+- **Electives** — elective block seasons, offerings catalog, student selection (voluntary + assigned), admin management with auto-assign, group stats, enrollment lists, annual campaigns with progress tracking
+- **EDBO synchronization** — incremental daily cron sync + manual trigger endpoints (admin only); student study programs sync
 - **Google Drive** — file storage via service account (classroom passport PDFs)
 - **Email** — SMTP delivery for 2FA codes, password reset, account verification
 
@@ -39,13 +43,24 @@
 | [NestJS](https://nestjs.com/) | ^11 | Core framework |
 | [Prisma](https://www.prisma.io/) | ^7 | ORM |
 | [PostgreSQL](https://www.postgresql.org/) | 17 | Primary database |
-| [Redis](https://redis.io/) | 7 | Session store (`connect-redis`) |
+| [Redis](https://redis.io/) | 7 | Session store |
+| [connect-redis](https://github.com/tj/connect-redis) | ^9 | Redis session store adapter |
+| [ioredis](https://github.com/redis/ioredis) | ^5 | Redis client |
+| [express-session](https://github.com/expressjs/session) | ^1.19 | Session middleware |
+| [cookie-parser](https://github.com/expressjs/cookie-parser) | ^1.4 | Cookie parsing |
 | [Bun](https://bun.sh/) | >=1.3.10 | Package manager / runtime |
 | [TypeScript](https://www.typescriptlang.org/) | ^5.9 | Language |
 | [@nestjs/schedule](https://docs.nestjs.com/techniques/task-scheduling) | ^6 | Cron jobs |
 | [Swagger](https://swagger.io/) | ^11 | API docs at `/docs` |
 | [Docker Compose](https://www.docker.com/) | — | Local PostgreSQL + Redis |
 | [argon2](https://github.com/ranisalt/node-argon2) | ^0.44 | Password hashing |
+| [class-validator](https://github.com/typestack/class-validator) | ^0.15 | DTO validation |
+| [class-transformer](https://github.com/typestack/class-transformer) | ^0.5 | DTO transformation |
+| [React Email](https://react.email/) | ^1 | Email templates |
+| [googleapis](https://www.npmjs.com/package/googleapis) | ^171 | Google Drive + OAuth |
+| [otplib](https://www.npmjs.com/package/otplib) | ^12 | TOTP 2FA |
+| [qrcode](https://www.npmjs.com/package/qrcode) | ^1.5 | QR code generation for TOTP |
+| [@nestlab/google-recaptcha](https://www.npmjs.com/package/@nestlab/google-recaptcha) | ^3.11 | reCAPTCHA validation |
 
 ---
 
@@ -53,37 +68,61 @@
 
 ```
 src/
-├── auth/               # Session auth, Google OAuth, 2FA, password recovery
-│   ├── guards/         # AuthGuard, RolesGuard, ProviderGuard
-│   ├── decorators/     # @Authorization(), @Roles(), @Authorized()
+├── auth/                   # Session auth, Google OAuth, 2FA, password recovery
+│   ├── guards/             # AuthGuard, RolesGuard, ProviderGuard
+│   ├── decorators/         # @Authorization(), @Roles(), @Authorized()
 │   ├── password-recovery/
-│   ├── provider/       # Google OAuth
+│   ├── provider/           # Google OAuth
 │   └── two-factor-auth/
-├── user/               # User profile, password change
-├── admin/              # Admin user management
-├── student/            # Student-specific endpoints
-├── staff/              # Teacher-specific endpoints
-├── groups/             # Groups, curator assignment, transfer history
-├── classroom/          # Classroom inventory, photos, Google Drive PDFs
+├── user/                   # User profile, password change
+├── admin/                  # Admin user management
+├── student/                # Student-specific endpoints
+├── staff/                  # Teacher-specific endpoints, qualification upgrades
+├── groups/                 # Groups, curator assignment, transfer history
+├── classroom/              # Classroom inventory, photos, Google Drive PDFs
+├── curriculum/             # Full curriculum domain
+│   ├── specialties/        # Specialty CRUD
+│   ├── educational-programs/ # Educational program (OPP) CRUD
+│   ├── curricula/          # Curriculum container CRUD
+│   ├── curriculum-versions/ # Version management, sections, components, terms, projections
+│   ├── working-curricula/  # Working curriculum + component terms for academic year
+│   ├── group-assignments/  # Group ↔ curriculum version binding
+│   └── teacher-load/       # Subject/lesson assignment generation, confirmation workflow
+├── electives/              # Elective catalog, selection, admin management (v1 + v2)
+│   ├── electives.controller.ts       # Season/offering/selection management
+│   ├── electives.service.ts          # Core elective logic
+│   ├── elective-seasons.controller.ts # Campaigns, group confirmation, student blocks
+│   └── elective-seasons.service.ts   # Campaign lifecycle and progress
 ├── edbo/
-│   ├── core/           # EdboService: HTTP client, OAuth token management
-│   ├── sync/           # EdboSyncService: incremental sync, SyncState, cron + manual trigger
-│   ├── entrance/       # Admission campaign API (DTO wrappers for EDBO)
-│   ├── students/       # Student education history and exam API
-│   └── listeners/      # External listeners API
+│   ├── core/               # EdboService: HTTP client, OAuth token management
+│   ├── sync/               # EdboSyncService: incremental sync, SyncState, cron + manual trigger
+│   ├── entrance/           # Admission campaign API (DTO wrappers for EDBO)
+│   ├── students/           # Student education history and exam API
+│   ├── university/         # University staff API
+│   ├── accreditation/      # Accreditation data API
+│   ├── dictionary/         # EDBO dictionary endpoints
+│   ├── documents/          # EDBO document endpoints
+│   ├── persons/            # EDBO person endpoints
+│   └── listeners/          # External listeners API
 ├── libs/
-│   ├── common/         # Shared utilities and decorators
-│   ├── google-drive/   # Google Drive service account integration
-│   └── mail/           # @nestjs-modules/mailer + React Email templates
-├── prisma/             # PrismaService (global singleton)
-└── config/             # Config loaders: mailer, OAuth providers, reCAPTCHA
+│   ├── common/             # Shared utilities and decorators
+│   ├── google-drive/       # Google Drive service account integration
+│   └── mail/               # @nestjs-modules/mailer + React Email templates
+├── prisma/                 # PrismaService (global singleton)
+├── config/                 # Config loaders: mailer, OAuth providers, reCAPTCHA
+├── redis.config.ts         # Redis connection config
+├── main.ts                 # Application entry point
 ```
 
 ```
 prisma/
-└── schema.prisma       # Single source of truth for the database schema
-docker-compose.yml      # Starts PostgreSQL (port 5433) and Redis (port 6379)
-.env.example            # All required environment variables with descriptions
+├── schema.prisma           # Single source of truth for the database schema
+├── seed.ts                 # Database seed script
+├── config.ts               # Prisma config (schema path, seed command)
+└── migrations/             # Prisma migration files
+docker-compose.yml          # Starts PostgreSQL (port 5433) and Redis (port 6379)
+.env.example                # All required environment variables with descriptions
+redis.config.ts             # Redis connection configuration
 ```
 
 ---
@@ -101,6 +140,94 @@ Defined in `prisma/schema.prisma` as the `UserRole` enum:
 | `DEPUTY_DIRECTOR` | Deputy director |
 | `DIRECTOR` | Director |
 | `ADMINISTRATOR` | Full system access |
+
+---
+
+## Core domain entities
+
+| Entity | Role |
+|--------|------|
+| `User` | Authenticated system actor |
+| `Student` | Student linked to EDBO, bound to a group |
+| `Teacher` | Pedagogical worker with rate (up to 1.5), qualification upgrades |
+| `Group` | Academic group derived from EDBO sync |
+| `Specialty` | Licensed specialty unit (e.g. F3 Computer Science) |
+| `EducationalProgram` | Educational professional program (OPP) linked to a specialty |
+| `Curriculum` | Curriculum container (unique per OPP × form × basis × year) |
+| `CurriculumVersion` | Immutable version of a curriculum (sections, components, terms) |
+| `WorkingCurriculum` | Operational plan for a specific academic year |
+| `CurriculumComponentTerm` | Per-semester distribution of ECTS, hours, control form |
+| `TeacherLoadSubjectAssignment` | Confirmed teaching load at component level |
+| `TeacherLoadLessonAssignment` | Per-lesson-type detail with optional teacher override |
+| `TeacherQualificationUpgrade` | Professional development record (auto-parsed from EDBO or manual) |
+| `ElectiveBlockSeason` | Published elective block for a specific academic year |
+| `ElectiveOffering` | Specific discipline available to students within a season |
+| `StudentElectiveSelection` | Canonical record of student's elective choice |
+| `Classroom` | Classroom inventory with photos and passport PDF |
+
+---
+
+## Curriculum domain
+
+The curriculum domain is the backbone of academic planning:
+
+1. **Specialty** → **Educational Program** → **Curriculum** → **Curriculum Version**
+2. A version contains **Sections** (ЗСО, ЦЗП, ЦФП, etc.) with **Components** and **Elective Blocks**
+3. Components have **Terms** per semester (ECTS, hours, control form)
+4. **Working Curriculum** is the operational layer for a specific academic year, derived from a published version
+5. **Group Curriculum Assignment** binds a group to a curriculum version
+6. **Group Working Curriculum Assignment** binds a group to a working curriculum
+7. **Teacher Load** is generated from working curriculum component terms and managed through subject/lesson assignments
+
+### Teacher load workflow
+
+1. Deputy director generates DRAFT subject assignments from a working curriculum
+2. Primary teachers are assigned to subjects; lesson overrides can redirect specific lesson types
+3. Director confirms assignments with order number and date → status becomes CONFIRMED
+4. Validation: 720 × teacher.rate hour limit (hard block), order date after 01.09 (soft warn)
+
+---
+
+## User roles
+
+- **STUDENT** — View own data, select electives
+- **TEACHER** — View own load and qualifications
+- **SCHEDULE_DISPATCHER** — Manage schedule
+- **HEAD_OF_DEPARTMENT** — Department oversight
+- **DEPUTY_DIRECTOR** — Generate teacher load, manage curricula
+- **DIRECTOR** — Confirm teacher load orders, approve working curricula
+- **ADMINISTRATOR** — Full system access
+
+---
+
+## EDBO synchronization
+
+EDBO (ЄДЕБО) is the national education registry. This backend synchronizes student and teacher records from it.
+
+**What is synchronized:**
+- `Student` records — from `/api/studentEducations/list` using `modifyDate` for incremental sync
+- `Teacher` records — from `/api/university/staff/list` using `dateLastChange` for incremental sync
+- Student documents (RNOKPP, passport, student ticket) — backfilled separately for records missing them
+- Educational programs — from `/api/universityStudyPrograms/list` with accreditation data
+
+**Where the logic lives:** `src/edbo/sync/edbo-sync.service.ts`, `src/edbo/sync/sync-state.service.ts`
+
+**Cron:** runs daily at 02:00 (`EVERY_DAY_AT_2AM`). Students, staff, and document backfill run in parallel. A failure in one does not stop the others.
+
+**Incremental sync state:** last successful run timestamps are stored in the `SyncState` table (`students_last_sync_at`, `staff_last_sync_at`). These are updated **only after a successful sync** — a failed run does not advance the cursor.
+
+**Overlap window:** 10 minutes are subtracted from the last sync timestamp when filtering records. This compensates for clock drift between the application server and EDBO.
+
+**Manual trigger** (admin only): endpoints under `/edbo/sync/`:
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /edbo/sync/students` | Sync students only |
+| `POST /edbo/sync/staff` | Sync staff only |
+| `POST /edbo/sync/all` | Full sync (students + staff + documents) |
+| `POST /edbo/sync/study-programs` | Sync educational programs |
+
+**Important:** sync uses `upsert` operations and deliberately does not overwrite locally managed attributes (e.g. `Group.curatorId`). Any change to sync logic must account for this.
 
 ---
 
@@ -130,12 +257,16 @@ Key variables:
 | `POSTGRES_URI` | Full PostgreSQL connection URI |
 | `REDIS_HOST` / `REDIS_PASSWORD` | Redis connection |
 | `SESSION_SECRET` / `COOKIES_SECRET` | Session and cookie signing secrets |
+| `SESSION_MAX_AGE` | Session lifetime (e.g. `30d`) |
+| `ALLOWED_ORIGIN` | CORS allowed origin (frontend URL) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 |
 | `GOOGLE_DRIVE_CLIENT_EMAIL` / `GOOGLE_DRIVE_PRIVATE_KEY` | Google Drive service account |
+| `GOOGLE_DRIVE_FOLDER_ID` | Target Google Drive folder ID |
 | `EDEBO_CODE` | Institution code in EDBO (e.g. `563`) |
 | `EDBO_BASE_URL` / `EDBO_APP_KEY` | EDBO API proxy URL and license key |
 | `EDBO_USER_LOGIN` / `EDBO_USER_PASSWORD` | EDBO account credentials |
 | `MAIL_HOST` / `MAIL_PASSWORD` | SMTP configuration |
+| `GOOGLE_RECAPTCHA_SECRET_KEY` | Google reCAPTCHA v3 secret |
 
 See [`.env.example`](.env.example) for the full list with descriptions.
 
@@ -190,38 +321,38 @@ bunx prisma generate
 
 # Open Prisma Studio (local GUI)
 bunx prisma studio
+
+# Seed the database
+bunx prisma db seed
 ```
 
 **Rule:** every change to `schema.prisma` must be accompanied by a migration. Never edit schema without running `migrate dev` locally first.
 
 ---
 
-## EDBO synchronization
+## API endpoints overview
 
-EDBO (ЄДЕБО) is the national education registry. This backend synchronizes student and teacher records from it.
+| Namespace | Path prefix | Description |
+|-----------|-------------|-------------|
+| Auth | `/auth/` | Login, register, logout, profile, refresh, 2FA |
+| Users | `/users/` | Profile, password change |
+| Admin | `/admin/` | User management |
+| Students | `/students/` | Student list and details |
+| Staff | `/staff/` | Teachers, qualification upgrades |
+| Groups | `/groups/` | Groups, curator assignment |
+| Classrooms | `/classrooms/` | CRUD, photos, passport |
+| Specialties | `/specialties/` | Specialty management |
+| Educational Programs | `/educational-programs/` | OPP management |
+| Curricula | `/curricula/` | Curriculum container CRUD |
+| Curriculum Versions | `/curriculum-versions/` | Version management, sections, components, terms |
+| Working Curricula | `/working-curricula/` | Operational plans, component terms, group assignments |
+| Group Curriculum Assignments | `/group-curriculum-assignments/` | Group ↔ curriculum binding |
+| Teacher Load | `/teacher-load/` | Load summaries, subject/lesson assignments, confirmation |
+| Electives | `/electives/` | Catalog, selections, admin management (v1 + v2), campaigns |
+| EDBO Sync | `/edbo/sync/` | Manual sync triggers |
+| Entrance | `/entrance/` | Admission campaign |
 
-**What is synchronized:**
-- `Student` records — from `/api/studentEducations/list` using `modifyDate` for incremental sync
-- `Teacher` records — from `/api/university/staff/list` using `dateLastChange` for incremental sync
-- Student documents (RNOKPP, passport, student ticket) — backfilled separately for records missing them
-
-**Where the logic lives:** `src/edbo/sync/edbo-sync.service.ts`, `src/edbo/sync/sync-state.service.ts`
-
-**Cron:** runs daily at 02:00 (`EVERY_DAY_AT_2AM`). Students, staff, and document backfill run in parallel. A failure in one does not stop the others.
-
-**Incremental sync state:** last successful run timestamps are stored in the `SyncState` table (`students_last_sync_at`, `staff_last_sync_at`). These are updated **only after a successful sync** — a failed run does not advance the cursor.
-
-**Overlap window:** 10 minutes are subtracted from the last sync timestamp when filtering records. This compensates for clock drift between the application server and EDBO.
-
-**Manual trigger** (admin only): three `POST` endpoints under `/edbo/sync/`:
-
-| Endpoint | Description |
-|----------|-------------|
-| `POST /edbo/sync/students` | Sync students only |
-| `POST /edbo/sync/staff` | Sync staff only |
-| `POST /edbo/sync/all` | Full sync (students + staff + documents) |
-
-**Important:** sync uses `upsert` operations and deliberately does not overwrite locally managed attributes (e.g. `Group.curatorId`). Any change to sync logic must account for this.
+Full interactive documentation available at Swagger UI (`/docs`).
 
 ---
 
@@ -231,6 +362,8 @@ EDBO (ЄДЕБО) is the national education registry. This backend synchronizes 
 - **Read related files before editing sync.** Sync logic touches `SyncState`, `Student`, `Teacher`, `Group`, and `StudentGroupHistory`. Understand all dependencies before making changes.
 - **Do not overwrite local attributes with sync data.** `Group.curatorId` and other manually managed fields must stay protected in upsert operations.
 - **Group records are derived from sync.** Groups are created automatically when students are synced — they are not manually created entities.
+- **Curriculum versions are immutable after publishing.** Corrections require creating a new version, not overwriting.
+- **Teacher load limit:** 720 × Teacher.rate hours per year (max 1080 for 1.5 rate). Enforced at confirmation time.
 - **Prefer simple, production-safe solutions.** Avoid adding queues, caches, or new infrastructure unless the problem cannot be solved without it.
 - **Avoid large refactors in a single change.** Make focused, reviewable commits. Refactoring is a separate task from feature work.
 - **Logging:** use `new Logger(ClassName.name)` — not `console.log`.
@@ -262,6 +395,7 @@ bunx prisma migrate dev --name <name>   # Create migration
 bunx prisma migrate deploy              # Apply migrations
 bunx prisma generate                    # Regenerate client
 bunx prisma studio                      # Open GUI
+bunx prisma db seed                     # Seed database
 ```
 
 ---

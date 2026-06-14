@@ -33,11 +33,12 @@ export class WorkingComponentTermsController {
     description:
       'Часткове оновлення WorkingCurriculumComponentTerm за його власним ID. ' +
       'Не вказані поля залишаються без змін. ' +
-      'Сума годин після оновлення не повинна перевищувати нормативний обсяг.',
+      'Загальна сума годин може перевищувати componentTerm.hours: це поле зберігає ' +
+      'аудиторний орієнтовний обсяг, а робочий план включає самостійну роботу і консультації.',
   })
   @ApiParam({ name: 'id', description: 'UUID рядка WorkingCurriculumComponentTerm' })
   @ApiResponse({ status: 200 })
-  @ApiResponse({ status: 400, description: 'Сума годин перевищує нормативний обсяг' })
+  @ApiResponse({ status: 400, description: 'Затверджений план або запис не знайдено' })
   @ApiResponse({ status: 404 })
   @Patch(':id')
   @HttpCode(HttpStatus.OK)

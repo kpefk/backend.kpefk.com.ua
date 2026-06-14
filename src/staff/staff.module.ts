@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common'
 
 import { UserModule } from '@/user/user.module'
 
+import { QualificationUpgradesController } from './qualification-upgrades.controller'
+import { QualificationUpgradesService } from './qualification-upgrades.service'
 import { StaffController } from './staff.controller'
 import { StaffService } from './staff.service'
 
@@ -10,8 +12,8 @@ import { StaffService } from './staff.service'
 // PrismaService is @Global() — no import needed.
 @Module({
   imports: [UserModule],
-  controllers: [StaffController],
-  providers: [StaffService],
-  exports: [StaffService],
+  controllers: [StaffController, QualificationUpgradesController],
+  providers: [StaffService, QualificationUpgradesService],
+  exports: [StaffService, QualificationUpgradesService],
 })
 export class StaffModule {}

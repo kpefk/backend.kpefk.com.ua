@@ -174,9 +174,9 @@ export class CurriculumVersionsService {
       data: {
         curriculumId,
         versionNumber: nextNumber,
-        approvalDate: new Date(dto.approvalDate),
-        approvalOrderNumber: dto.approvalOrderNumber.trim(),
-        approvedBy: dto.approvedBy.trim(),
+        approvalDate: dto.approvalDate ? new Date(dto.approvalDate) : null,
+        approvalOrderNumber: dto.approvalOrderNumber?.trim() ?? null,
+        approvedBy: dto.approvedBy?.trim() ?? null,
         notes: dto.notes ?? null,
         isPublished: false,
       },
@@ -195,7 +195,7 @@ export class CurriculumVersionsService {
       throw new BadRequestException('Версія вже опублікована.')
     }
 
-    // Базова валідація: повинна мати хоча б один розділ
+    // [HARD BLOCK] Повинна мати хоча б один розділ
     const sectionCount = await this.prisma.curriculumSection.count({ where: { versionId: id } })
     if (sectionCount === 0) {
       throw new BadRequestException(
@@ -203,10 +203,32 @@ export class CurriculumVersionsService {
       )
     }
 
-    return this.prisma.curriculumVersion.update({
+    const warnings: string[] = []
+
+    // [SOFT WARN] Вибіркові компоненти < 25% загального обсягу (ст. 49 ч. 2 Закону №2745-VIII)
+    const components = await this.prisma.curriculumComponent.findMany({
+      where: { section: { versionId: id } },
+      select: { totalHours: true, isMandatory: true },
+    })
+    if (components.length > 0) {
+      const totalHours    = components.reduce((s, c) => s + c.totalHours, 0)
+      const electiveHours = components.filter((c) => !c.isMandatory).reduce((s, c) => s + c.totalHours, 0)
+      const electiveRatio = totalHours > 0 ? electiveHours / totalHours : 0
+      if (electiveRatio < 0.25) {
+        warnings.push(
+          `Вибіркові компоненти складають ${Math.round(electiveRatio * 100)}% загального обсягу (${electiveHours} з ${totalHours} год.). ` +
+          'Ст. 49 ч. 2 Закону №2745-VIII вимагає не менше 25%. ' +
+          'Перевірте наявність ВК або позначте відповідні ОК як вибіркові (isMandatory = false).',
+        )
+      }
+    }
+
+    const published = await this.prisma.curriculumVersion.update({
       where: { id },
       data: { isPublished: true, publishedAt: new Date() },
     })
+
+    return { version: published, warnings }
   }
 
   /**
@@ -580,6 +602,24 @@ export class CurriculumVersionsService {
     })
   }
 
+  public async deleteElectiveBlock(id: string) {
+    const block = await this.prisma.electiveBlock.findUnique({
+      where: { id },
+      include: {
+        section: { include: { version: { select: { isPublished: true, versionNumber: true } } } },
+        options: { select: { id: true } },
+      },
+    })
+    if (!block) throw new NotFoundException('Блок вибіркових компонентів не знайдено.')
+    assertDraft(block.section.version)
+    if (block.options.length > 0) {
+      throw new BadRequestException(
+        `Блок містить ${block.options.length} компонент(ів). Перед видаленням відв'яжіть або видаліть їх.`,
+      )
+    }
+    await this.prisma.electiveBlock.delete({ where: { id } })
+  }
+
   // ── Components ────────────────────────────────────────────────────────────
 
   public async createComponent(sectionId: string, dto: CreateComponentDto) {
@@ -836,6 +876,14 @@ export class CurriculumVersionsService {
       )
     }
 
+    // [SOFT WARN] subgroupCount = 2 без підстави — фіксуємо в логах, не блокуємо
+    if ((dto.subgroupCount ?? 1) >= 2 && !dto.subgroupJustification) {
+      this.logger.warn(
+        `ComponentTerm componentId=${componentId} sem=${dto.semesterNumber}: ` +
+        'subgroupCount=2 без subgroupJustification — підстава для поділу не вказана (Наказ МОН №686 п.5).',
+      )
+    }
+
     return this.prisma.curriculumComponentTerm.create({
       data: {
         componentId,
@@ -846,6 +894,8 @@ export class CurriculumVersionsService {
         controlForm: dto.controlForm ?? null,
         hasCourseWork: dto.hasCourseWork ?? false,
         hasCourseProject: dto.hasCourseProject ?? false,
+        subgroupCount: dto.subgroupCount ?? 1,
+        subgroupJustification: dto.subgroupJustification ?? null,
       },
     })
   }
@@ -880,6 +930,18 @@ export class CurriculumVersionsService {
       }
     }
 
+    // [SOFT WARN] subgroupCount = 2 без підстави
+    const newSubgroupCount = dto.subgroupCount ?? term.subgroupCount
+    const newJustification = dto.subgroupJustification !== undefined
+      ? dto.subgroupJustification
+      : term.subgroupJustification
+    if (newSubgroupCount >= 2 && !newJustification) {
+      this.logger.warn(
+        `ComponentTerm id=${termId}: subgroupCount=2 без subgroupJustification ` +
+        '— підстава для поділу не вказана (Наказ МОН №686 п.5).',
+      )
+    }
+
     return this.prisma.curriculumComponentTerm.update({
       where: { id: termId },
       data: {
@@ -889,6 +951,8 @@ export class CurriculumVersionsService {
         ...(dto.controlForm !== undefined && { controlForm: dto.controlForm }),
         ...(dto.hasCourseWork !== undefined && { hasCourseWork: dto.hasCourseWork }),
         ...(dto.hasCourseProject !== undefined && { hasCourseProject: dto.hasCourseProject }),
+        ...(dto.subgroupCount !== undefined && { subgroupCount: dto.subgroupCount }),
+        ...(dto.subgroupJustification !== undefined && { subgroupJustification: dto.subgroupJustification ?? null }),
         // Зміна semesterNumber недозволена — це ключова частина уніку
       },
     })

@@ -165,6 +165,15 @@ export class CurriculumVersionsController {
     return this.versionsService.createElectiveBlock(sectionId, dto)
   }
 
+  @ApiOperation({ summary: 'Видалити блок вибіркових компонентів' })
+  @ApiParam({ name: 'id', description: 'UUID блоку' })
+  @Delete('elective-blocks/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Authorization(...WRITE_ROLES)
+  public deleteElectiveBlock(@Param('id') id: string) {
+    return this.versionsService.deleteElectiveBlock(id)
+  }
+
   // ── Components ────────────────────────────────────────────────────────────
 
   @ApiOperation({ summary: 'Додати освітній компонент до розділу' })

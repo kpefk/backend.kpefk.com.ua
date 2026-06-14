@@ -5,6 +5,8 @@ import { UserModule } from '@/user/user.module'
 
 import { CurriculaController } from './curricula/curricula.controller'
 import { CurriculaService } from './curricula/curricula.service'
+import { CurriculumImportController } from './import/curriculum-import.controller'
+import { CurriculumImportService } from './import/curriculum-import.service'
 import { CurriculumVersionsController } from './curriculum-versions/curriculum-versions.controller'
 import { CurriculumVersionsService } from './curriculum-versions/curriculum-versions.service'
 import { EducationalProgramsController } from './educational-programs/educational-programs.controller'
@@ -13,6 +15,9 @@ import { GroupAssignmentsController } from './group-assignments/group-assignment
 import { GroupAssignmentsService } from './group-assignments/group-assignments.service'
 import { SpecialtiesController } from './specialties/specialties.controller'
 import { SpecialtiesService } from './specialties/specialties.service'
+import { SubjectAssignmentsService } from './teacher-load/subject-assignments.service'
+import { TeacherLoadController } from './teacher-load/teacher-load.controller'
+import { TeacherLoadService } from './teacher-load/teacher-load.service'
 import { WorkingComponentTermsController } from './working-curricula/working-component-terms.controller'
 import { WorkingCurriculaController } from './working-curricula/working-curricula.controller'
 import { WorkingCurriculaService } from './working-curricula/working-curricula.service'
@@ -23,18 +28,23 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     SpecialtiesController,
     EducationalProgramsController,
     CurriculaController,
+    CurriculumImportController,
     CurriculumVersionsController,
     GroupAssignmentsController,
     WorkingCurriculaController,
     WorkingComponentTermsController,
+    TeacherLoadController,
   ],
   providers: [
     SpecialtiesService,
     EducationalProgramsService,
     CurriculaService,
+    CurriculumImportService,
     CurriculumVersionsService,
     GroupAssignmentsService,
     WorkingCurriculaService,
+    TeacherLoadService,
+    SubjectAssignmentsService,
   ],
   exports: [
     SpecialtiesService,
@@ -43,6 +53,8 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     CurriculumVersionsService,
     GroupAssignmentsService,
     WorkingCurriculaService,
+    TeacherLoadService,
+    SubjectAssignmentsService,
   ],
 })
 export class CurriculumModule {}

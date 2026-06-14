@@ -6,8 +6,11 @@ import {
   HttpStatus,
   Param,
   Patch,
-  Post
+  Post,
+  Res,
+  UseGuards
 } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { TwoFactorMethod, UserRole } from '@prisma/client'
 import {
   ApiBearerAuth,
@@ -16,12 +19,15 @@ import {
   ApiResponse,
   ApiTags
 } from '@nestjs/swagger'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import type { Response } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
 
 import { UpdateUserDto } from './dto/update-user.dto'
 import { ChangePasswordDto } from './dto/change-password.dto'
+import { RequestEmailChangeDto } from './dto/request-email-change.dto'
 import { UserService } from './user.service'
 import { UserEntity } from './entities/user.entity'
 import { PrismaService } from '@/prisma/prisma.service'
@@ -40,6 +46,7 @@ export class UserController {
   public constructor(
     private readonly userService: UserService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -123,6 +130,53 @@ export class UserController {
       dto.password
     )
     return new UserEntity(user)
+  }
+
+  /**
+   * Ініціює зміну email поточного користувача.
+   * Сам email НЕ змінюється одразу — на нову адресу надсилається лист
+   * з посиланням для підтвердження.
+   * @param userId - ID авторизованого користувача.
+   * @param dto - Нова адреса + поточний пароль.
+   */
+  @ApiOperation({ summary: 'Запит на зміну email (з підтвердженням поштою)' })
+  @ApiResponse({ status: 200, description: 'Лист підтвердження надіслано на нову адресу' })
+  @ApiResponse({ status: 401, description: 'Невірний пароль або не авторизований' })
+  @ApiResponse({ status: 409, description: 'Адреса вже використовується' })
+  @Authorization()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('profile/email')
+  public async requestEmailChange(
+    @Authorized('id') userId: string,
+    @Body() dto: RequestEmailChangeDto
+  ): Promise<{ success: boolean }> {
+    return this.userService.requestEmailChange(userId, dto.newEmail, dto.password)
+  }
+
+  /**
+   * Підтверджує зміну email за токеном з листа та перенаправляє на фронтенд.
+   * Публічний маршрут — токен є секретом.
+   * @param token - Токен підтвердження зміни email.
+   * @param res - Express Response для редіректу.
+   */
+  @ApiOperation({ summary: 'Підтвердити зміну email за токеном' })
+  @ApiParam({ name: 'token', description: 'Токен підтвердження' })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
+  @Get('email-change/confirm/:token')
+  public async confirmEmailChange(
+    @Param('token') token: string,
+    @Res() res: Response
+  ): Promise<void> {
+    const origin = this.configService.getOrThrow<string>('ALLOWED_ORIGIN')
+    try {
+      await this.userService.confirmEmailChange(token)
+      res.redirect(`${origin}/profile?email=changed`)
+    } catch {
+      res.redirect(`${origin}/profile?email=error`)
+    }
   }
 
   /**

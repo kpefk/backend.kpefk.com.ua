@@ -3,15 +3,15 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
-import { Roles } from '@/auth/decorators/roles.decorator'
 
 import { EdboSyncService, SyncResult } from './edbo-sync.service'
 import { SyncFilterDto } from './dto/sync-filter.dto'
 
 @ApiTags('ЄДЕБО Синхронізація')
 @Controller('edbo/sync')
-@Authorization()
-@Roles(UserRole.ADMINISTRATOR)
+// @Authorization(role) підключає і AuthGuard, і RolesGuard.
+// Окремий @Roles() без UseGuards(RolesGuard) НЕ перевіряється — роль ігнорувалася.
+@Authorization(UserRole.ADMINISTRATOR)
 export class EdboSyncController {
   public constructor(private readonly edboSyncService: EdboSyncService) {}
 

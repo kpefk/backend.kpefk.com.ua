@@ -65,7 +65,13 @@ export class WorkingCurriculaController {
     return this.workingCurriculaService.findById(id)
   }
 
-  @ApiOperation({ summary: 'Отримати призначення робочих планів для групи' })
+  @ApiOperation({
+    summary: 'Отримати snapshot-призначення робочих планів для групи (аудит)',
+    deprecated: true,
+    description:
+      'Повертає historical snapshot layer (GroupWorkingCurriculumAssignment). ' +
+      'Для поточного членства групи використовуйте GroupCurriculumAssignment.',
+  })
   @ApiParam({ name: 'groupId', description: 'UUID групи' })
   @ApiQuery({ name: 'academicYear', required: false })
   @Get('by-group/:groupId')
@@ -149,7 +155,14 @@ export class WorkingCurriculaController {
     return this.workingCurriculaService.upsertComponentTerm(id, dto)
   }
 
-  @ApiOperation({ summary: "Прив'язати групу до робочого навчального плану" })
+  @ApiOperation({
+    summary: "Прив'язати групу до робочого навчального плану (snapshot-запис)",
+    deprecated: true,
+    description:
+      'Створює explicit snapshot у GroupWorkingCurriculumAssignment. ' +
+      'Поточне членство груп визначається через нормативний шар (GroupCurriculumAssignment). ' +
+      'Цей ендпоінт зарезервований для адміністративних override-операцій.',
+  })
   @ApiResponse({ status: 201 })
   @Post('group-assignments')
   @HttpCode(HttpStatus.CREATED)

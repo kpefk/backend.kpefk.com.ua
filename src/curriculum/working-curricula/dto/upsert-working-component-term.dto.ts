@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsInt, IsNumber, IsOptional, IsUUID, Max, Min } from 'class-validator'
+import { IsInt, IsNumber, IsOptional, IsUUID, Max, Min, ValidateIf } from 'class-validator'
 
 export class UpsertWorkingComponentTermDto {
   @ApiProperty({ description: 'UUID розподілу компонента (CurriculumComponentTerm)', example: 'uuid' })
@@ -53,4 +53,13 @@ export class UpsertWorkingComponentTermDto {
   @IsNumber()
   @Min(0)
   weeklyPracticalHours?: number
+
+  @ApiPropertyOptional({
+    description: 'UUID викладача, відповідального за цей компонент у цьому семестрі. null — зняти призначення.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @ValidateIf((o: UpsertWorkingComponentTermDto) => o.teacherId !== null)
+  @IsUUID('4', { message: 'teacherId має бути валідним UUID.' })
+  teacherId?: string | null
 }

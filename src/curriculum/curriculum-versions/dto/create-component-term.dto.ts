@@ -6,7 +6,9 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator'
 
@@ -55,4 +57,34 @@ export class CreateComponentTermDto {
   @IsOptional()
   @IsBoolean()
   hasCourseProject?: boolean
+
+  /**
+   * Кількість підгруп для практичних / лабораторних занять.
+   * Наказ МОН №686 п.5–6: максимум 2 підгрупи; мінімум 10 студентів у кожній.
+   * 1 = без поділу (за замовчуванням).
+   */
+  @ApiPropertyOptional({
+    description: 'Кількість підгруп для практ./лаб. (1 або 2). Наказ МОН №686 п.5–6.',
+    example: 2,
+    minimum: 1,
+    maximum: 2,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2, { message: 'Наказ МОН №686 п.5–6 дозволяє поділ лише на 2 підгрупи.' })
+  subgroupCount?: number
+
+  /**
+   * Текстова підстава для поділу на підгрупи (наприклад «Вимоги техніки безпеки» або «Наказ №12»).
+   * Обовʼязкова для документального підтвердження при subgroupCount = 2.
+   */
+  @ApiPropertyOptional({
+    description: 'Підстава для поділу на підгрупи (обов\'язкова при subgroupCount = 2)',
+    example: 'Вимоги техніки безпеки в лабораторії',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  subgroupJustification?: string
 }

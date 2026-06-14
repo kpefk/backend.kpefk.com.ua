@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { render } from '@react-email/components'
 
+import { EmailChangeTemplate } from './templates/email-change.template'
 import { ResetPasswordTemplate } from './templates/reset-password.template'
 import { TempPasswordTemplate } from './templates/temp-password.template'
 import { TwoFactorAuthTemplate } from './templates/two-factor-auth.template'
@@ -63,6 +64,21 @@ export class MailService {
 			subject,
 			html
 		})
+	}
+
+	/**
+	 * Sends a confirmation email for an email-address change.
+	 * The link points to the backend confirm endpoint and is sent to the NEW
+	 * address so that only its owner can complete the change.
+	 * @param newEmail - The new email address to confirm.
+	 * @param token - The email-change confirmation token.
+	 */
+	public async sendEmailChangeConfirmation(newEmail: string, token: string) {
+		const apiUrl = this.configService.getOrThrow<string>('APPLICATION_URL')
+		const confirmUrl = `${apiUrl}/users/email-change/confirm/${token}`
+		const html = await render(EmailChangeTemplate({ confirmUrl }))
+
+		return this.sendMail(newEmail, 'Підтвердження зміни email', html)
 	}
 
 	/**

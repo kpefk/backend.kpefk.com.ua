@@ -4,9 +4,11 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  Post
+  Post,
+  UseGuards
 } from '@nestjs/common'
 import { Recaptcha } from '@nestlab/google-recaptcha'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 
 import { NewPasswordDto } from './dto/new-password.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
@@ -37,6 +39,8 @@ export class PasswordRecoveryController {
   @ApiResponse({ status: 400, description: 'Невірна капча' })
   @ApiResponse({ status: 404, description: 'Користувача не знайдено' })
   @Recaptcha()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   @Post('reset')
   @HttpCode(HttpStatus.OK)
   public async resetPassword(@Body() dto: ResetPasswordDto) {
@@ -55,6 +59,8 @@ export class PasswordRecoveryController {
   @ApiResponse({ status: 404, description: 'Користувача не знайдено' })
   @ApiResponse({ status: 400, description: 'Токен застарів' })
   @Recaptcha()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(ThrottlerGuard)
   @Post('new/:token')
   @HttpCode(HttpStatus.OK)
   public async newPassword(

@@ -1,5 +1,11 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException
+} from '@nestjs/common'
+import { TokenType, UserRole } from '@prisma/client'
 import { hash, verify } from 'argon2'
 
 import { PrismaService } from '@/prisma/prisma.service'
@@ -148,12 +154,109 @@ export class UserService {
     return this.prismaService.user.update({
       where: { id: userId },
       data: {
-        ...(dto.email && { email: dto.email }),
         ...(dto.isTwoFactorEnabled !== undefined && {
           isTwoFactorEnabled: dto.isTwoFactorEnabled
         })
       }
     })
+  }
+
+  /**
+   * Ініціює зміну email: перевіряє пароль, унікальність нової адреси,
+   * створює токен підтвердження та надсилає лист на НОВУ адресу.
+   * Сам email змінюється лише після підтвердження (confirmEmailChange).
+   *
+   * @throws UnauthorizedException якщо пароль невірний.
+   * @throws ConflictException якщо нова адреса вже зайнята.
+   */
+  public async requestEmailChange(
+    userId: string,
+    newEmail: string,
+    password: string
+  ) {
+    const user = await this.findById(userId)
+
+    const isValidPassword = await verify(user.password, password)
+    if (!isValidPassword) {
+      throw new UnauthorizedException(
+        'Невірний пароль. Зміну email скасовано.'
+      )
+    }
+
+    const normalizedEmail = newEmail.trim().toLowerCase()
+
+    if (normalizedEmail === user.email.toLowerCase()) {
+      throw new ConflictException('Нова адреса співпадає з поточною.')
+    }
+
+    const existing = await this.prismaService.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true }
+    })
+    if (existing) {
+      throw new ConflictException('Ця email-адреса вже використовується.')
+    }
+
+    // Видаляємо попередні незавершені запити на зміну email для цього юзера.
+    await this.prismaService.token.deleteMany({
+      where: { userId, type: TokenType.EMAIL_CHANGE }
+    })
+
+    const token = randomBytes(32).toString('hex')
+    await this.prismaService.token.create({
+      data: {
+        userId,
+        token,
+        newEmail: normalizedEmail,
+        expiresIn: new Date(Date.now() + 3600 * 1000), // 1 година
+        type: TokenType.EMAIL_CHANGE
+      }
+    })
+
+    await this.mailService.sendEmailChangeConfirmation(normalizedEmail, token)
+
+    return { success: true }
+  }
+
+  /**
+   * Підтверджує зміну email за токеном з листа.
+   *
+   * @throws NotFoundException якщо токен не знайдено.
+   * @throws BadRequestException якщо токен прострочений.
+   * @throws ConflictException якщо нову адресу встигли зайняти.
+   */
+  public async confirmEmailChange(token: string) {
+    const existingToken = await this.prismaService.token.findFirst({
+      where: { token, type: TokenType.EMAIL_CHANGE }
+    })
+
+    if (!existingToken || !existingToken.newEmail) {
+      throw new NotFoundException('Посилання недійсне або вже використане.')
+    }
+
+    if (new Date(existingToken.expiresIn) < new Date()) {
+      await this.prismaService.token.delete({ where: { id: existingToken.id } })
+      throw new BadRequestException('Термін дії посилання вичерпано.')
+    }
+
+    // Повторна перевірка унікальності — адресу могли зайняти за час очікування.
+    const taken = await this.prismaService.user.findUnique({
+      where: { email: existingToken.newEmail },
+      select: { id: true }
+    })
+    if (taken && taken.id !== existingToken.userId) {
+      await this.prismaService.token.delete({ where: { id: existingToken.id } })
+      throw new ConflictException('Ця email-адреса вже використовується.')
+    }
+
+    const updated = await this.prismaService.user.update({
+      where: { id: existingToken.userId },
+      data: { email: existingToken.newEmail }
+    })
+
+    await this.prismaService.token.delete({ where: { id: existingToken.id } })
+
+    return updated
   }
 
   /**

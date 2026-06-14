@@ -1,22 +1,24 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsDateString, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
+import { ApiPropertyOptional } from '@nestjs/swagger'
+import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator'
 
 export class CreateCurriculumVersionDto {
-  @ApiProperty({ description: 'Дата затвердження плану', example: '2025-05-26' })
+  // Метадані затвердження більше не вимагаються (плани заходять уже затвердженими).
+  @ApiPropertyOptional({ description: 'Дата затвердження плану', example: '2025-05-26' })
+  @IsOptional()
   @IsDateString({}, { message: 'approvalDate має бути валідною датою (ISO 8601).' })
-  approvalDate!: string
+  approvalDate?: string
 
-  @ApiProperty({ description: 'Номер наказу про затвердження', example: '№6 від 26.05.2025' })
+  @ApiPropertyOptional({ description: 'Номер наказу про затвердження', example: '№6 від 26.05.2025' })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(100)
-  approvalOrderNumber!: string
+  approvalOrderNumber?: string
 
-  @ApiProperty({ description: 'Затверджено ким', example: 'Директор Т. Селівончик' })
+  @ApiPropertyOptional({ description: 'Затверджено ким', example: 'Директор Т. Селівончик' })
+  @IsOptional()
   @IsString()
-  @MinLength(2)
   @MaxLength(255)
-  approvedBy!: string
+  approvedBy?: string
 
   @ApiPropertyOptional({ description: 'Примітки до версії' })
   @IsOptional()

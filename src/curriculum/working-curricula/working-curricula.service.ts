@@ -1,6 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 
 import { PrismaService } from '@/prisma/prisma.service'
+import {
+  NORM_CONSULTATION_RATIO_DISTANCE,
+  NORM_CONSULTATION_RATIO_FULL_TIME,
+} from '../teacher-load/teacher-load.constants'
 
 import { CreateWorkingAssignmentDto } from './dto/create-working-assignment.dto'
 import { CreateWorkingCurriculumDto } from './dto/create-working-curriculum.dto'
@@ -29,6 +33,8 @@ const WORKING_CURRICULUM_INCLUDE = {
 
 @Injectable()
 export class WorkingCurriculaService {
+  private readonly logger = new Logger(WorkingCurriculaService.name)
+
   public constructor(private readonly prisma: PrismaService) {}
 
   // ── Working curriculum CRUD ───────────────────────────────────────────────
@@ -42,11 +48,21 @@ export class WorkingCurriculaService {
       orderBy: [{ academicYear: 'desc' }],
       include: {
         ...WORKING_CURRICULUM_INCLUDE,
-        _count: { select: { groupAssignments: true, componentTerms: true } },
+        _count: { select: { componentTerms: true } },
       },
     })
 
     if (items.length === 0) return []
+
+    const versionIds = [...new Set(items.map((i) => i.versionId))]
+
+    // Batch: normative group counts per version (source of truth for group membership)
+    const normativeCounts = await this.prisma.groupCurriculumAssignment.groupBy({
+      by: ['versionId'],
+      where: { versionId: { in: versionIds }, isActive: true },
+      _count: { id: true },
+    })
+    const normativeCountMap = new Map(normativeCounts.map((r) => [r.versionId, r._count.id]))
 
     // Batch: fetch which working curricula have at least one non-zero hour value
     const nonEmptyGroups = await this.prisma.workingCurriculumComponentTerm.groupBy({
@@ -65,7 +81,11 @@ export class WorkingCurriculaService {
     })
     const nonEmptyIds = new Set(nonEmptyGroups.map((g) => g.workingCurriculumId))
 
-    return items.map((item) => ({ ...item, isEmpty: !nonEmptyIds.has(item.id) }))
+    return items.map((item) => ({
+      ...item,
+      isEmpty: !nonEmptyIds.has(item.id),
+      activeGroupCount: normativeCountMap.get(item.versionId) ?? 0,
+    }))
   }
 
   public async findById(id: string) {
@@ -80,16 +100,37 @@ export class WorkingCurriculaService {
                 component: { select: { id: true, code: true, name: true, componentType: true } },
               },
             },
+            teacher: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+              },
+            },
           },
-          orderBy: { componentTerm: { semesterNumber: 'asc' } },
-        },
-        groupAssignments: {
-          include: { group: { select: { id: true, name: true } } },
+          orderBy: [
+            { componentTerm: { component: { section: { orderIndex: 'asc' } } } },
+            { componentTerm: { component: { orderIndex: 'asc' } } },
+            { componentTerm: { semesterNumber: 'asc' } },
+          ],
         },
       },
     })
 
     if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
+
+    // Live group membership is derived from the normative layer, not from the snapshot table.
+    // GroupWorkingCurriculumAssignment is a historical snapshot; use GroupCurriculumAssignment as source of truth.
+    const activeGroups = await this.prisma.groupCurriculumAssignment.findMany({
+      where: { versionId: wc.versionId, isActive: true },
+      select: {
+        id: true,
+        group: { select: { id: true, name: true } },
+        effectiveFrom: true,
+      },
+      orderBy: { group: { name: 'asc' } },
+    })
 
     const isEmpty = wc.componentTerms.every(
       (t) =>
@@ -101,7 +142,7 @@ export class WorkingCurriculaService {
         t.consultationHours === 0,
     )
 
-    return { ...wc, isEmpty }
+    return { ...wc, isEmpty, activeGroups }
   }
 
   /**
@@ -213,7 +254,7 @@ export class WorkingCurriculaService {
   public async delete(id: string) {
     const wc = await this.prisma.workingCurriculum.findUnique({
       where: { id },
-      include: { _count: { select: { groupAssignments: true } } },
+      include: { _count: { select: { groupSnapshots: true } } },
     })
     if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
 
@@ -221,7 +262,11 @@ export class WorkingCurriculaService {
       throw new BadRequestException('Неможливо видалити затверджений робочий план.')
     }
 
-    if (wc._count.groupAssignments > 0) {
+    // Guard on both normative groups (live membership) and snapshots (historical assignments)
+    const activeGroupCount = await this.prisma.groupCurriculumAssignment.count({
+      where: { versionId: wc.versionId, isActive: true },
+    })
+    if (activeGroupCount > 0 || wc._count.groupSnapshots > 0) {
       throw new BadRequestException(
         'Неможливо видалити робочий план, до якого прив\'язані групи. Спочатку від\'яжіть групи.',
       )
@@ -255,12 +300,24 @@ export class WorkingCurriculaService {
       throw new BadRequestException('Затверджений план не можна змінювати.')
     }
 
-    // Знайти всі канонічні терми версії в потрібних семестрах
+    // Знайти всі канонічні терми версії в потрібних семестрах.
+    // §3.10 Положення про вибір ОК: до робочого плану входять лише ОБРАНІ ВК,
+    // тому опції вибіркових блоків (electiveBlockId != null) включаються
+    // тільки якщо існує підсумок вибору групи (GroupElectiveSelection)
+    // в межах активної прив'язки до цієї версії плану.
     const canonicalTerms = await this.prisma.curriculumComponentTerm.findMany({
       where: {
         semesterNumber: { in: wc.semesterNumbers },
         component: {
           section: { versionId: wc.versionId },
+          OR: [
+            { electiveBlockId: null },
+            {
+              groupSelections: {
+                some: { assignment: { versionId: wc.versionId, isActive: true } },
+              },
+            },
+          ],
         },
       },
       select: { id: true },
@@ -294,13 +351,21 @@ export class WorkingCurriculaService {
    * Оновлює розбивку годин для конкретного WorkingCurriculumComponentTerm за його ID.
    *
    * Дозволяє часткове оновлення (PATCH-семантика): не вказані поля залишаються без змін.
-   * Перевіряє, що сума годин після оновлення не перевищує нормативний обсяг.
+   * Сума аудиторних годин не блокує збереження: componentTerm.hours зберігає аудиторний
+   * орієнтовний обсяг, а робочий план додатково розподіляє самостійну роботу та консультації,
+   * тому загальна сума може перевищувати нормативний аудиторний показник. Візуальне
+   * попередження про перевищення надає клієнт (поле "Залишок" та підсвітка рядка).
    */
   public async updateComponentTerm(termId: string, dto: UpdateWorkingComponentTermDto) {
     const term = await this.prisma.workingCurriculumComponentTerm.findUnique({
       where: { id: termId },
       include: {
-        workingCurriculum: { select: { isApproved: true } },
+        workingCurriculum: {
+          select: {
+            isApproved: true,
+            version: { select: { curriculum: { select: { educationForm: true } } } },
+          },
+        },
         componentTerm: { select: { hours: true } },
       },
     })
@@ -317,10 +382,16 @@ export class WorkingCurriculaService {
       independentHours: dto.independentHours ?? term.independentHours,
       consultationHours: dto.consultationHours ?? term.consultationHours,
     }
-    const total = Object.values(next).reduce((s, v) => s + v, 0)
-    if (total > term.componentTerm.hours) {
-      throw new BadRequestException(
-        `Сума годин (${total}) перевищує нормативний обсяг компонента (${term.componentTerm.hours} год).`,
+
+    // SOFT WARN: Наказ МОН №686 п.9 — ліміт консультацій відносно загального обсягу
+    const educationForm = term.workingCurriculum.version.curriculum.educationForm
+    const isDistance = educationForm === 'PART_TIME' || educationForm === 'DUAL'
+    const consultRatio = isDistance ? NORM_CONSULTATION_RATIO_DISTANCE : NORM_CONSULTATION_RATIO_FULL_TIME
+    const componentHours = term.componentTerm.hours
+    if (componentHours > 0 && next.consultationHours > componentHours * consultRatio) {
+      this.logger.warn(
+        `[SOFT WARN] Консультації (${next.consultationHours} год) перевищують ${consultRatio * 100}% ` +
+          `обсягу компонента (${componentHours} год). Наказ МОН №686 п.9. termId=${termId}`,
       )
     }
 
@@ -330,12 +401,17 @@ export class WorkingCurriculaService {
         ...next,
         ...(dto.weeklyLectureHours !== undefined && { weeklyLectureHours: dto.weeklyLectureHours }),
         ...(dto.weeklyPracticalHours !== undefined && { weeklyPracticalHours: dto.weeklyPracticalHours }),
+        // teacherId: undefined → не змінювати; null → зняти призначення; string → призначити
+        ...(dto.teacherId !== undefined && { teacherId: dto.teacherId }),
       },
       include: {
         componentTerm: {
           include: {
             component: { select: { id: true, code: true, name: true, componentType: true } },
           },
+        },
+        teacher: {
+          select: { id: true, firstName: true, lastName: true, middleName: true },
         },
       },
     })
@@ -344,12 +420,15 @@ export class WorkingCurriculaService {
   /**
    * Вставляє або оновлює розбивку годин для компонент-семестру.
    *
-   * Правило цілісності: сума годин за видами роботи не повинна перевищувати
-   * загальну кількість годин з нормативного розподілу.
-   * Якщо перевищення — кидає BadRequestException.
+   * componentTerm.hours — аудиторний орієнтовний обсяг; загальна сума робочого розподілу
+   * може його перевищувати за рахунок самостійної роботи та консультацій.
+   * Перевірка перевищення відсутня — вона є некоректною (порівняння різних величин).
    */
   public async upsertComponentTerm(workingCurriculumId: string, dto: UpsertWorkingComponentTermDto) {
-    const wc = await this.prisma.workingCurriculum.findUnique({ where: { id: workingCurriculumId } })
+    const wc = await this.prisma.workingCurriculum.findUnique({
+      where: { id: workingCurriculumId },
+      include: { version: { select: { curriculum: { select: { educationForm: true } } } } },
+    })
     if (!wc) throw new NotFoundException('Робочий навчальний план не знайдено.')
 
     // Перевіряємо, що componentTerm належить до тієї ж версії плану
@@ -375,18 +454,19 @@ export class WorkingCurriculaService {
       )
     }
 
-    const totalDistributed =
-      (dto.lectureHours ?? 0) +
-      (dto.practicalHours ?? 0) +
-      (dto.labHours ?? 0) +
-      (dto.seminarHours ?? 0) +
-      (dto.independentHours ?? 0) +
-      (dto.consultationHours ?? 0)
-
-    if (totalDistributed > componentTerm.hours) {
-      throw new BadRequestException(
-        `Сума годин (${totalDistributed}) перевищує нормативний обсяг компонента (${componentTerm.hours} год).`,
-      )
+    // SOFT WARN: Наказ МОН №686 п.9 — ліміт консультацій відносно загального обсягу
+    const consultationHours = dto.consultationHours ?? 0
+    if (consultationHours > 0 && componentTerm.hours > 0) {
+      const educationForm = wc.version.curriculum.educationForm
+      const isDistance = educationForm === 'PART_TIME' || educationForm === 'DUAL'
+      const consultRatio = isDistance ? NORM_CONSULTATION_RATIO_DISTANCE : NORM_CONSULTATION_RATIO_FULL_TIME
+      if (consultationHours > componentTerm.hours * consultRatio) {
+        this.logger.warn(
+          `[SOFT WARN] Консультації (${consultationHours} год) перевищують ${consultRatio * 100}% ` +
+            `обсягу компонента (${componentTerm.hours} год). Наказ МОН №686 п.9. ` +
+            `wcId=${workingCurriculumId} componentTermId=${dto.componentTermId}`,
+        )
+      }
     }
 
     return this.prisma.workingCurriculumComponentTerm.upsert({
@@ -407,6 +487,7 @@ export class WorkingCurriculaService {
         consultationHours: dto.consultationHours ?? 0,
         weeklyLectureHours: dto.weeklyLectureHours ?? null,
         weeklyPracticalHours: dto.weeklyPracticalHours ?? null,
+        teacherId: dto.teacherId ?? null,
       },
       update: {
         lectureHours: dto.lectureHours ?? 0,
@@ -417,6 +498,7 @@ export class WorkingCurriculaService {
         consultationHours: dto.consultationHours ?? 0,
         weeklyLectureHours: dto.weeklyLectureHours ?? null,
         weeklyPracticalHours: dto.weeklyPracticalHours ?? null,
+        ...(dto.teacherId !== undefined && { teacherId: dto.teacherId }),
       },
     })
   }

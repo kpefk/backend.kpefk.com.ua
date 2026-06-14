@@ -9,9 +9,10 @@ import {
   Post,
   Delete
 } from '@nestjs/common'
-import { User, UserRole } from '@prisma/client'
+import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
+import { UserEntity } from '@/user/entities/user.entity'
 
 import { AdminService } from './admin.service'
 import { CreateUserDto } from './dto/create-user.dto'
@@ -40,8 +41,9 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Список користувачів' })
   @Get('users')
   @HttpCode(HttpStatus.OK)
-  public async findAll(): Promise<User[]> {
-    return this.adminService.findAll()
+  public async findAll(): Promise<UserEntity[]> {
+    const users = await this.adminService.findAll()
+    return users.map((user) => new UserEntity(user))
   }
 
   /**
@@ -54,8 +56,8 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Користувач не знайдений' })
   @Get('users/:id')
   @HttpCode(HttpStatus.OK)
-  public async findById(@Param('id') id: string): Promise<User> {
-    return this.adminService.findById(id)
+  public async findById(@Param('id') id: string): Promise<UserEntity> {
+    return new UserEntity(await this.adminService.findById(id))
   }
 
   /**
@@ -69,8 +71,8 @@ export class AdminController {
   @ApiResponse({ status: 403, description: 'Доступ заборонено' })
   @Post('users')
   @HttpCode(HttpStatus.CREATED)
-  public async create(@Body() dto: CreateUserDto): Promise<User> {
-    return this.adminService.create(dto)
+  public async create(@Body() dto: CreateUserDto): Promise<UserEntity> {
+    return new UserEntity(await this.adminService.create(dto))
   }
 
   /**
@@ -89,8 +91,8 @@ export class AdminController {
   public async update(
     @Param('id') id: string,
     @Body() dto: UpdateUserByAdminDto
-  ): Promise<User> {
-    return this.adminService.update(id, dto)
+  ): Promise<UserEntity> {
+    return new UserEntity(await this.adminService.update(id, dto))
   }
 
   /**
@@ -104,8 +106,8 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Користувач не знайдений' })
   @Delete('users/:id')
   @HttpCode(HttpStatus.OK)
-  public async deactivate(@Param('id') id: string): Promise<User> {
-    return this.adminService.deactivate(id)
+  public async deactivate(@Param('id') id: string): Promise<UserEntity> {
+    return new UserEntity(await this.adminService.deactivate(id))
   }
 
   @ApiOperation({ summary: 'Студенти без акаунту (для вибору при створенні)' })

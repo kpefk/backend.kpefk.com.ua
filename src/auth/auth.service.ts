@@ -314,6 +314,7 @@ export class AuthService {
       qualificationGroupName: edeboStudent.qualificationGroupName,
       educationFormId: edeboStudent.educationFormId,
       educationFormName: edeboStudent.educationFormName,
+      personEducationPaymentTypeName: edeboStudent.personEducationPaymentTypeName,
       isDualForm: edeboStudent.isDualForm,
       isSecondHigher: edeboStudent.isSecondHigher,
       isShortTerm: edeboStudent.isShortTerm,

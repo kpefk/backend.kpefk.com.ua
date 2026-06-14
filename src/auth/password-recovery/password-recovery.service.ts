@@ -40,18 +40,16 @@ export class PasswordRecoveryService {
   public async reset(dto: ResetPasswordDto) {
     const user = await this.userService.findByEmail(dto.email!)
 
-    if (!user) {
-      throw new NotFoundException(
-        'Користувач не знайдений. Будь ласка, перевірте введений адрес електронної пошти та спробуйте знову.'
+    // Завжди повертаємо однакову відповідь, незалежно від існування акаунта,
+    // щоб не дозволяти перебір (enumeration) зареєстрованих email-адрес.
+    if (user) {
+      const passwordResetToken = await this.generatePasswordResetToken(user.id)
+
+      await this.mailService.sendPasswordResetEmail(
+        user.email,
+        passwordResetToken.token
       )
     }
-
-    const passwordResetToken = await this.generatePasswordResetToken(user.id)
-
-    await this.mailService.sendPasswordResetEmail(
-      user.email,
-      passwordResetToken.token
-    )
 
     return true
   }
