@@ -181,7 +181,7 @@ export class TeacherLoadService {
         examPrep: wct.consultationHours,
         practiceMode: wct.practiceMode,
         labMode: wct.labMode,
-        subgroupCount: wct.componentTerm.subgroupCount ?? 1,
+        subgroupCount: wct.subgroupCount ?? wct.componentTerm.subgroupCount ?? 1,
       }
     })
 
@@ -452,22 +452,26 @@ export class TeacherLoadService {
       examPrep,
     }
 
-    // Множники узгоджені з gener() призначень:
-    //  • лекції/семінари/консультації/СПРС — завжди потік (×1);
-    //  • практики/лаб — ×groupCount лише в режимі PER_GROUP;
-    //  • поділ на підгрупи (≥2) множить години практик/лаб (кожна підгрупа окремо).
+    // Множники узгоджені з generate() призначень:
+    //  • поділ на підгрупи (≥2) множить ВСІ види занять (кожна підгрупа окремо);
+    //  • практики/лаб додатково ×groupCount у режимі PER_GROUP;
+    //  • лекції/семінари/консультації/СПРС поза підгрупами — потокові (×1).
     const sub = subgroupCount >= 2 ? subgroupCount : 1
     const practiceMul = (practiceMode === 'PER_GROUP' ? groupCount : 1) * sub
     const labMul = (labMode === 'PER_GROUP' ? groupCount : 1) * sub
     const practicalLabTotal = practical * practiceMul + lab * labMul
+    const lectureTotal = lecture * sub
+    const seminarTotal = seminar * sub
+    const independentTotal = independent * sub
+    const examPrepTotal = examPrep * sub
 
     const totalHours: TotalHoursDto = {
-      lecture: lecture,                 // потік ×1
+      lecture: lectureTotal,            // ×subgroups
       practicalLab: practicalLabTotal,  // ×groupCount (PER_GROUP) ×subgroups
-      seminar: seminar,                 // потік ×1
-      independent: independent,         // потік ×1
-      examPrep: examPrep,               // потік ×1
-      subtotal: lecture + practicalLabTotal + seminar + independent + examPrep,
+      seminar: seminarTotal,            // ×subgroups
+      independent: independentTotal,    // ×subgroups
+      examPrep: examPrepTotal,          // ×subgroups
+      subtotal: lectureTotal + practicalLabTotal + seminarTotal + independentTotal + examPrepTotal,
     }
 
     return {

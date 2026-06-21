@@ -4,7 +4,11 @@ import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 
-import { EdboSyncService, SyncResult } from './edbo-sync.service'
+import {
+  EdboSyncService,
+  SyncResult,
+  UniversitySyncResult,
+} from './edbo-sync.service'
 import { SyncFilterDto } from './dto/sync-filter.dto'
 
 @ApiTags('ЄДЕБО Синхронізація')
@@ -37,6 +41,14 @@ export class EdboSyncController {
   @HttpCode(HttpStatus.OK)
   public syncStudyPrograms(): Promise<SyncResult> {
     return this.edboSyncService.syncStudyPrograms()
+  }
+
+  @ApiOperation({ summary: 'Синхронізація інформації про заклад з ЄДЕБО' })
+  @ApiResponse({ status: 200, description: 'Результат синхронізації закладу' })
+  @Post('university')
+  @HttpCode(HttpStatus.OK)
+  public syncUniversity(): Promise<UniversitySyncResult> {
+    return this.edboSyncService.syncUniversity()
   }
 
   @ApiOperation({ summary: 'Повна синхронізація (студенти + викладачі + документи)' })

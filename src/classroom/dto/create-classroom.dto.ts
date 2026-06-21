@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString } from 'class-validator'
+import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator'
+import { ClassroomType } from '@prisma/client'
 
 export class CreateClassroomDto {
   @ApiProperty({
@@ -23,4 +24,19 @@ export class CreateClassroomDto {
   @IsOptional()
   @IsString({ message: 'ID завідувача має бути рядком.' })
   teacherId?: string
+
+  @ApiProperty({ description: 'Місткість (к-сть місць)', example: 30, required: false })
+  @IsOptional()
+  @IsInt({ message: 'Місткість має бути цілим числом.' })
+  @Min(1)
+  capacity?: number | null
+
+  @ApiProperty({
+    description: 'Тип аудиторії',
+    enum: ClassroomType,
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(ClassroomType)
+  type?: ClassroomType | null
 }

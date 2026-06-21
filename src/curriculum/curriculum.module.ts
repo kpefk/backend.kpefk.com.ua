@@ -13,6 +13,8 @@ import { EducationalProgramsController } from './educational-programs/educationa
 import { EducationalProgramsService } from './educational-programs/educational-programs.service'
 import { GroupAssignmentsController } from './group-assignments/group-assignments.controller'
 import { GroupAssignmentsService } from './group-assignments/group-assignments.service'
+import { IndividualPlansController } from './individual-plans/individual-plans.controller'
+import { IndividualPlansService } from './individual-plans/individual-plans.service'
 import { SpecialtiesController } from './specialties/specialties.controller'
 import { SpecialtiesService } from './specialties/specialties.service'
 import { SubjectAssignmentsService } from './teacher-load/subject-assignments.service'
@@ -31,6 +33,7 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     CurriculumImportController,
     CurriculumVersionsController,
     GroupAssignmentsController,
+    IndividualPlansController,
     WorkingCurriculaController,
     WorkingComponentTermsController,
     TeacherLoadController,
@@ -42,6 +45,7 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     CurriculumImportService,
     CurriculumVersionsService,
     GroupAssignmentsService,
+    IndividualPlansService,
     WorkingCurriculaService,
     TeacherLoadService,
     SubjectAssignmentsService,

@@ -30,19 +30,6 @@ import {
   teachingHoursLimit,
 } from './teacher-load.constants'
 
-// ─── Domain constants ─────────────────────────────────────────────────────────
-
-/**
- * Типи занять, що ніколи не діляться на підгрупи (Наказ МОН №686 п.5–7).
- * SPRS — внутрішній показник закладу; також не ділиться на підгрупи.
- */
-const STREAM_LESSON_TYPES = new Set<LessonType>([
-  'LECTURE',
-  'SEMINAR',
-  'CONSULTATION',
-  'SPRS',
-])
-
 // ─── Prisma includes ──────────────────────────────────────────────────────────
 
 /** Поля викладача, необхідні для TeacherRefDto */
@@ -176,8 +163,10 @@ export class SubjectAssignmentsService {
       hours: number,
       subgroupCount: number,
     ): void => {
-      const canSplit = type === 'PRACTICE' || type === 'LAB'
-      if (canSplit && subgroupCount >= 2) {
+      // Поділ на підгрупи охоплює ВСІ види занять: кожна підгрупа ведеться
+      // окремо (свій викладач, повні години). Тип заняття не обмежує поділ.
+      const canSplit = subgroupCount >= 2
+      if (canSplit) {
         for (let sg = 1; sg <= subgroupCount; sg++) {
           lessonRows.push({
             id:                  randomUUID(),
@@ -203,7 +192,7 @@ export class SubjectAssignmentsService {
     for (const wct of wc.componentTerms) {
       const termId = wct.componentTermId
       const year = wc.academicYear
-      const subgroupCount = wct.componentTerm.subgroupCount ?? 1
+      const subgroupCount = wct.subgroupCount ?? wct.componentTerm.subgroupCount ?? 1
 
       // ── Потоковий subject: лекції ────────────────────────────────────────────
       if (wct.lectureHours > 0) {
@@ -314,10 +303,13 @@ export class SubjectAssignmentsService {
     // Режими розподілу по ОК-семестрах робочого плану.
     const modeRows = await this.prisma.workingCurriculumComponentTerm.findMany({
       where: { workingCurriculumId },
-      select: { componentTermId: true, practiceMode: true, labMode: true },
+      select: { componentTermId: true, practiceMode: true, labMode: true, subgroupCount: true },
     })
     const modes = new Map(
-      modeRows.map((m) => [m.componentTermId, { practiceMode: m.practiceMode, labMode: m.labMode }]),
+      modeRows.map((m) => [
+        m.componentTermId,
+        { practiceMode: m.practiceMode, labMode: m.labMode, subgroupCount: m.subgroupCount },
+      ]),
     )
 
     return rows.map((r) =>
@@ -361,7 +353,7 @@ export class SubjectAssignmentsService {
           componentTermId: updated.curriculumComponentTermId,
         },
       },
-      select: { practiceMode: true, labMode: true },
+      select: { practiceMode: true, labMode: true, subgroupCount: true },
     })
 
     return this.mapSubjectToDto(updated, [], modeRow ?? undefined)
@@ -401,17 +393,11 @@ export class SubjectAssignmentsService {
       throw new BadRequestException('Підтверджені записи не можна редагувати.')
     }
 
-    // C3: заборона підгруп для потокових типів [HARD BLOCK]
+    // При поділі дисципліни на підгрупи кожна підгрупа ведеться окремо в УСІХ
+    // видах занять (своя викладач), тому обмеження типу тут немає.
     const newSubgroup = dto.subgroupNumber !== undefined
       ? dto.subgroupNumber
       : lesson.subgroupNumber
-
-    if (newSubgroup !== null && STREAM_LESSON_TYPES.has(lesson.lessonType)) {
-      throw new BadRequestException(
-        `Тип заняття "${lesson.lessonType}" не підтримує поділ на підгрупи ` +
-        `(Наказ МОН №686 п.5). Підгрупи допустимі лише для PRACTICE та LAB.`,
-      )
-    }
 
     // Якщо override == primary → очищаємо override до null (зайва надмірність)
     let resolvedOverrideId = dto.overrideTeacherId !== undefined
@@ -658,7 +644,7 @@ export class SubjectAssignmentsService {
     dto: SetDistributionModeDto,
     userId: string,
   ): Promise<SubjectAssignmentDto[]> {
-    const { workingCurriculumId, curriculumComponentTermId, practiceMode, labMode } = dto
+    const { workingCurriculumId, curriculumComponentTermId, practiceMode, labMode, subgroupCount } = dto
 
     const wct = await this.prisma.workingCurriculumComponentTerm.findUnique({
       where: {
@@ -685,6 +671,7 @@ export class SubjectAssignmentsService {
       data: {
         ...(practiceMode !== undefined && { practiceMode }),
         ...(labMode !== undefined && { labMode }),
+        ...(subgroupCount !== undefined && { subgroupCount }),
       },
     })
 
@@ -754,7 +741,7 @@ export class SubjectAssignmentsService {
   private mapSubjectToDto(
     row: SubjectRow,
     warnings: string[],
-    modes?: { practiceMode: LoadDistributionMode; labMode: LoadDistributionMode },
+    modes?: { practiceMode: LoadDistributionMode; labMode: LoadDistributionMode; subgroupCount: number },
   ): SubjectAssignmentDto {
     const ct = row.curriculumComponentTerm
     const primaryTeacher = row.primaryTeacher !== null
@@ -784,6 +771,7 @@ export class SubjectAssignmentsService {
       signedByDirectorId:       row.signedByDirectorId,
       practiceMode:             modes?.practiceMode ?? 'STREAM',
       labMode:                  modes?.labMode ?? 'STREAM',
+      subgroupCount:            modes?.subgroupCount ?? 1,
       totalHours:               lessons.reduce((s, l) => s + l.hours, 0),
       lessons,
       warnings,

@@ -213,6 +213,7 @@ model Group {
   curriculumAssignments        GroupCurriculumAssignment[]
   workingCurriculumAssignments GroupWorkingCurriculumAssignment[]
   subjectAssignments           TeacherLoadSubjectAssignment[]
+  schedules                    Schedule[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -309,6 +310,8 @@ model Teacher {
   primarySubjectAssignments  TeacherLoadSubjectAssignment[]    @relation("SubjectPrimaryTeacher")
   lessonOverrideAssignments  TeacherLoadLessonAssignment[]     @relation("LessonOverrideTeacher")
   qualificationUpgrades      TeacherQualificationUpgrade[]
+  scheduleEntries            ScheduleEntry[]
+  substitutionReplacements   ScheduleSubstitution[]            @relation("SubstitutionTeacher")
 
   @@map("teachers")
 }
@@ -361,12 +364,27 @@ model TeacherQualificationUpgrade {
 // ── Curriculum domain relations added below ──────────────────────────────────
 // Group and Student are extended with back-relations only (no new columns).
 
+/// Тип аудиторії — для перевірки відповідності виду заняття (ТЗ §3.7).
+enum ClassroomType {
+  LECTURE  // Лекційна
+  PRACTICE // Для практичних/семінарів
+  LAB      // Лабораторна (спецаудиторія)
+  COMPUTER // Комп'ютерний клас
+  SPORTS   // Спортивна зала
+  OTHER    // Інше / універсальна
+}
+
 model Classroom {
   id String @id @default(uuid())
 
   number String @unique // Classroom number (№6, №6а, №10)
   name   String @unique // Classroom name (Scientific and natural sciences classroom, Software laboratory)
   photos Json   @default("[]") // Photos of the classroom (Up to 4 photos)
+
+  /// Місткість (к-сть місць) — для перевірки місткості vs розмір групи (ТЗ §3.7).
+  capacity Int?
+  /// Тип аудиторії — для перевірки відповідності типу заняття (ТЗ §3.7).
+  type     ClassroomType?
 
   // Passport (PDF)
   passportGoogleFileId String? @map("passport_google_file_id")
@@ -375,6 +393,9 @@ model Classroom {
   // Head of the classroom
   teacherId String?  @map("teacher_id")
   teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  scheduleEntries          ScheduleEntry[]
+  substitutionReplacements ScheduleSubstitution[] @relation("SubstitutionClassroom")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -740,6 +761,7 @@ model CurriculumComponentTerm {
 
   workingTerms       WorkingCurriculumComponentTerm[]
   subjectAssignments TeacherLoadSubjectAssignment[]
+  scheduleEntries    ScheduleEntry[]
   /// @deprecated back-relation для ElectiveComponent.curriculumTermId (deprecated)
   electiveComponent  ElectiveComponent?
 
@@ -874,6 +896,7 @@ model WorkingCurriculum {
 
   componentTerms     WorkingCurriculumComponentTerm[]
   subjectAssignments TeacherLoadSubjectAssignment[]
+  schedules          Schedule[]
   /// Snapshot-layer: explicit group bindings recorded at assignment time.
   /// For live/current group membership use GroupCurriculumAssignment WHERE versionId AND isActive.
   groupSnapshots GroupWorkingCurriculumAssignment[]
@@ -907,9 +930,13 @@ model WorkingCurriculumComponentTerm {
   weeklyPracticalHours Decimal? @map("weekly_practical_hours") @db.Decimal(4, 1)
 
   /// Режим розподілу практичних/лабораторних: потік чи окремо на кожну групу.
-  /// Лекції/семінари/консультації/СПРС завжди потокові — для них режим не застосовується.
   practiceMode LoadDistributionMode @default(STREAM) @map("practice_mode")
   labMode      LoadDistributionMode @default(STREAM) @map("lab_mode")
+
+  /// Кількість підгруп, на які ділиться дисципліна (1 = без поділу).
+  /// При ≥2 ВСІ види занять ведуться окремо в кожній підгрупі (своя викладач,
+  /// години × кількість підгруп) — напр. іноземна мова, IT, фізкультура.
+  subgroupCount Int @default(1) @map("subgroup_count")
 
   /// Відповідальний викладач за цей компонент у даному семестрі.
   /// null = викладач ще не призначений.
@@ -1421,4 +1448,434 @@ model AuditLog {
   @@index([userId])
   @@index([targetId])
   @@map("audit_logs")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                          SCHEDULE DOMAIN                                    ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Тип тижня для заняття в розкладі.
+/// EVERY  — заняття щотижня (займає і непарний, і парний тиждень).
+/// ODD    — лише непарний тиждень (чисельник).
+/// EVEN   — лише парний тиждень (знаменник).
+enum WeekParity {
+  ODD   // Непарний
+  EVEN  // Парний
+  EVERY // Щотижня
+}
+
+/// Стан розкладу групи.
+enum ScheduleStatus {
+  DRAFT     // Чернетка (диспетчер редагує)
+  PUBLISHED // Опубліковано (видно студентам / викладачам)
+}
+
+/// Тижневий розклад занять конкретної групи на семестр навчального року.
+/// Один на (група × навчальний рік × семестр). Джерело генерації — РНП
+/// (WorkingCurriculum), резолвиться через GroupWorkingCurriculumAssignment.
+model Schedule {
+  id                  String            @id @default(uuid())
+  groupId             String            @map("group_id")
+  group               Group             @relation(fields: [groupId], references: [id])
+  workingCurriculumId String            @map("working_curriculum_id")
+  workingCurriculum   WorkingCurriculum @relation(fields: [workingCurriculumId], references: [id], onDelete: Cascade)
+
+  academicYear   String         @map("academic_year")
+  semesterNumber Int            @map("semester_number")
+  status         ScheduleStatus @default(DRAFT)
+  generatedAt    DateTime?      @map("generated_at")
+  notes          String?
+
+  /// День тижня виховної години (1=Пн..5=Пт). null = не призначено (ТЗ §3.5).
+  /// Час слоту — фіксований (HOMEROOM_BELL), день обирає диспетчер для групи.
+  homeroomDayOfWeek Int? @map("homeroom_day_of_week")
+
+  entries ScheduleEntry[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([groupId, academicYear, semesterNumber])
+  @@index([workingCurriculumId])
+  @@map("schedules")
+}
+
+/// Одне заняття у тижневій сітці розкладу.
+/// Кілька записів можуть ділити один (day, slot, parity) лише як паралельні підгрупи
+/// (різні subgroupNumber, викладачі та аудиторії). Конфлікти обчислюються в сервісі.
+model ScheduleEntry {
+  id         String   @id @default(uuid())
+  scheduleId String   @map("schedule_id")
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  dayOfWeek      Int        @map("day_of_week")  // 1 = Пн ... 5 = Пт
+  slotNumber     Int        @map("slot_number")  // 1..5 (номер пари)
+  weekParity     WeekParity @default(EVERY) @map("week_parity")
+  lessonType     LessonType @map("lesson_type")
+  /// null = вся група; 1/2/3 = конкретна підгрупа
+  subgroupNumber Int?       @map("subgroup_number")
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+
+  teacherId   String?    @map("teacher_id")
+  teacher     Teacher?   @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  classroomId String?    @map("classroom_id")
+  classroom   Classroom? @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+
+  /// Посилання на онлайн-конференцію для дистанційного/змішаного заняття (ТЗ §3.6, §7.4).
+  onlineUrl String? @map("online_url")
+
+  substitutions ScheduleSubstitution[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([scheduleId])
+  @@index([teacherId])
+  @@index([classroomId])
+  @@map("schedule_entries")
+}
+
+/// Тип оперативної заміни заняття на конкретну дату (ТЗ §3.8, §7.3).
+enum SubstitutionType {
+  CANCELLED      // Заняття скасовано на цю дату
+  TEACHER_CHANGE // Заміна викладача
+  ROOM_CHANGE    // Заміна аудиторії
+  MOVED          // Перенесено на інший день/слот
+}
+
+/// Оперативна заміна/перенесення/скасування заняття на конкретну календарну
+/// дату — без зміни базового тижневого шаблону (ТЗ §3.8 «облік відпрацювань,
+/// заміщень, перенесень», §7.3 «форс-мажорні зміни»).
+model ScheduleSubstitution {
+  id      String        @id @default(uuid())
+  entryId String        @map("entry_id")
+  entry   ScheduleEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  /// Конкретна календарна дата, на яку діє заміна.
+  date DateTime
+  type SubstitutionType
+
+  /// Для MOVED — новий день/слот; інакше null.
+  newDayOfWeek  Int? @map("new_day_of_week")
+  newSlotNumber Int? @map("new_slot_number")
+
+  /// Для TEACHER_CHANGE / ROOM_CHANGE — заміняючий ресурс.
+  replacementTeacherId   String?    @map("replacement_teacher_id")
+  replacementTeacher     Teacher?   @relation("SubstitutionTeacher", fields: [replacementTeacherId], references: [id], onDelete: SetNull)
+  replacementClassroomId String?    @map("replacement_classroom_id")
+  replacementClassroom   Classroom? @relation("SubstitutionClassroom", fields: [replacementClassroomId], references: [id], onDelete: SetNull)
+
+  reason      String?
+  createdById String? @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([entryId, date])
+  @@index([entryId])
+  @@index([date])
+  @@map("schedule_substitutions")
+}
+
+/// Налаштування модуля розкладу (ТЗ §3.4, §4 — Адміністратор системи).
+/// Один рядок на заклад (singleton). Ліміти пар/день — параметри, а не хардкод.
+model ScheduleSettings {
+  id String @id @default(uuid())
+
+  /// Макс. пар на день для денної форми (ТЗ §3.4).
+  maxPairsFullTime Int  @default(4) @map("max_pairs_full_time")
+  /// Макс. пар на день для заочної/дистанційної/змішаної; null = без обмеження.
+  maxPairsPartTime Int? @map("max_pairs_part_time")
+  /// Чи рахується виховна година в ліміті пар на день (ТЗ §3.5).
+  homeroomCountsToLimit Boolean @default(false) @map("homeroom_counts_to_limit")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("schedule_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                        INSTITUTION (ЄДЕБО university/get)                    ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Інформація про заклад освіти (ВСП КПЕФК) з ЄДЕБО — POST /api/university/get.
+/// Один запис = наш заклад (universityId = EDEBO_CODE). Оновлюється щотижневою
+/// синхронізацією. Корисні поля винесено в колонки, повна відповідь — у `raw`.
+model University {
+  id           String  @id @default(uuid())
+  universityId Int     @unique @map("university_id") // Код закладу (числовий)
+  code         String?                               // GUID закладу
+
+  name        String?
+  shortName   String? @map("short_name")
+  nameEn      String? @map("name_en")
+  shortNameEn String? @map("short_name_en")
+  edrpou      String?                                 // Ідент. код в ЄДРПОУ
+
+  registrationDate   DateTime? @map("registration_date")
+  universityTypeName String?   @map("university_type_name")
+  educationType      String?   @map("education_type")
+  juristicalType     String?   @map("juristical_type")  // Відокремлений структурний підрозділ
+  finansingType      String?   @map("finansing_type")   // Форма власності
+  governanceType     String?   @map("governance_type")  // Орган управління
+  orgPravForm        String?   @map("org_prav_form")     // Організаційно-правова форма
+  riskRank           String?   @map("risk_rank")         // Ступінь ризику
+
+  isClosed            Boolean   @default(false) @map("is_closed")
+  closeStatusTypeName String?   @map("close_status_type_name")
+  closeReason         String?   @map("close_reason")
+  closeDate           DateTime? @map("close_date")
+  isMilitaryChair     Boolean   @default(false) @map("is_military_chair")
+
+  // Місце провадження освітньої діяльності (основне)
+  postIndex       String? @map("post_index")
+  katottgFullName String? @map("katottg_full_name")
+  addressStreet   String? @map("address_street") // streetTypeName + addressFull
+  houseNumber     String? @map("house_number")
+
+  // Місцезнаходження (юридична адреса)
+  postIndexLegal     String? @map("post_index_legal")
+  katottgFullNameU   String? @map("katottg_full_name_u")
+  addressStreetLegal String? @map("address_street_legal")
+  houseNumberLegal   String? @map("house_number_legal")
+
+  // Контакти
+  phoneNumber String? @map("phone_number")
+  email       String?
+  webSite     String? @map("web_site")
+
+  // Керівник
+  rectorFullName        String? @map("rector_full_name")
+  rectorLastName        String? @map("rector_last_name")
+  rectorFirstName       String? @map("rector_first_name")
+  rectorMiddleName      String? @map("rector_middle_name")
+  rectorFullNameGenCase String? @map("rector_full_name_gen_case")
+  rectorPosition        String? @map("rector_position")
+  rectorPhone           String? @map("rector_phone")
+  rectorEmail           String? @map("rector_email")
+  rectorWorkDateStart   DateTime? @map("rector_work_date_start")
+  rectorWorkDateFinish   DateTime? @map("rector_work_date_finish")
+
+  /// Повна відповідь ЄДЕБО (для полів, не винесених в окремі колонки)
+  raw Json?
+
+  syncedAt  DateTime @map("synced_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("universities")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                          DIPLOMA DOMAIN                                      ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Варіант підсумкової атестації (визначає шаблон і фінальний ОК).
+enum DiplomaVariant {
+  EXAM            // Кваліфікаційний іспит
+  EDKI            // ЄДКІ (єдиний державний кваліфікаційний іспит)
+  DIPLOMA_WORK    // Дипломна робота
+  DIPLOMA_PROJECT // Дипломний проєкт
+}
+
+/// Тип рядка зведеної відомості (для рендеру таблиці §4.3 додатка).
+enum DiplomaComponentType {
+  REGULAR     // Обов'язковий ОК
+  ELECTIVE    // Вибірковий компонент (ВК)
+  COURSE_WORK // Курсова робота (без коду/кредитів, лише оцінка)
+  PRACTICE    // Практика
+  ATTESTATION // Кваліфікаційна робота / проєкт / іспит / ЄДКІ
+}
+
+/// Підсумкова оцінка за шкалою закладу (двомовні підписи рахуються в сервісі).
+enum DiplomaGrade {
+  EXCELLENT    // Відмінно / Excellent
+  GOOD         // Добре / Good
+  SATISFACTORY // Задовільно / Satisfactory
+  PASSED       // Зараховано / Passed
+}
+
+/// Стан диплома в нашій системі.
+enum DiplomaStatus {
+  DRAFT // Чернетка (заповнюється зведена відомість)
+  READY // Готовий до видачі
+}
+
+/// Шаблон диплома + додатка на спеціальність × варіант атестації.
+/// Зберігає .docx-шаблони (docxtemplater) і впорядковану структуру ОК.
+model DiplomaTemplate {
+  id            String         @id @default(uuid())
+  name          String
+  specialtyCode String?        @map("specialty_code") // "122", "073" — для авто-підбору з XML
+  specialtyName String?        @map("specialty_name")
+  variant       DiplomaVariant
+
+  /// .docx-шаблони з плейсхолдерами (docxtemplater). null = ще не завантажено.
+  diplomaDocx  Bytes? @map("diploma_docx")
+  addendumDocx Bytes? @map("addendum_docx")
+
+  /// Назва кваліфікації та ступеня для шаблону (2 рядки, роздільно укр. / англ.).
+  qualificationNameUk  String? @map("qualification_name_uk")   // рядок 1, напр. "Фаховий молодший бакалавр "
+  qualificationNameUk2 String? @map("qualification_name_uk2")  // рядок 2, напр. "з комп'ютерних наук"
+  qualificationNameEn  String? @map("qualification_name_en")   // рядок 1 англ.
+  qualificationNameEn2 String? @map("qualification_name_en2")  // рядок 2 англ.
+  degreeNameUk         String? @map("degree_name_uk")          // напр. "Фаховий молодший бакалавр"
+  degreeNameEn         String? @map("degree_name_en")          // напр. "Professional Junior Bachelor"
+
+  /// Рядок тривалості навчання для §7.1, напр. "01/09/2022-30/06/2026".
+  studyPeriod String? @map("study_period")
+
+  /// Акредитація (заповнюється вручну або підвантажується з ЄДЕБО).
+  accrCertNumber      String? @map("accr_cert_number")     // Номер сертифіката (напр. НД-IV №150)
+  accrCertSeries      String? @map("accr_cert_series")     // Серія сертифіката
+  accrCertDate        String? @map("accr_cert_date")       // Дата видачі сертифіката (напр. "09/06/2019")
+  accrCertEndDate     String? @map("accr_cert_end_date")   // Строк дії (рядок, напр. "2027-06-30")
+  accrProtocolNumber  String? @map("accr_protocol_number") // Номер протоколу акредитації
+  accrInstitutionName   String? @map("accr_institution_name")    // Орган акредитації укр.
+  accrInstitutionNameEn String? @map("accr_institution_name_en") // Орган акредитації англ.
+
+  notes    String?
+  isActive Boolean @default(true) @map("is_active")
+
+  components DiplomaTemplateComponent[]
+  diplomas   Diploma[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([specialtyCode])
+  @@map("diploma_templates")
+}
+
+/// Рядок структури зведеної відомості в шаблоні (без оцінок).
+model DiplomaTemplateComponent {
+  id         String          @id @default(uuid())
+  templateId String          @map("template_id")
+  template   DiplomaTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  code        String?              // "ОК 1", "ВК 1", null для курсових
+  nameUk      String               @map("name_uk")
+  nameEn      String?              @map("name_en")
+  ects        Decimal?             @db.Decimal(5, 1) // null для курсових
+  type        DiplomaComponentType
+  /// Форма контролю → визначає шкалу оцінювання у зведеній відомості.
+  /// CREDIT = зараховано/не зараховано; EXAM/GRADED_CREDIT/null = диференційована (Відм/Добре/Задов).
+  controlForm TermControlForm?     @map("control_form")
+  orderIndex  Int                  @map("order_index")
+
+  @@index([templateId, orderIndex])
+  @@map("diploma_template_components")
+}
+
+/// Партія замовлення дипломів — один імпорт XML ЄДЕБО (ODM).
+model DiplomaBatch {
+  id             String  @id @default(uuid())
+  name           String
+  academicYear   String? @map("academic_year")
+  sourceFileName String? @map("source_file_name")
+  importedById   String? @map("imported_by_id")
+  count          Int     @default(0)
+
+  diplomas Diploma[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("diploma_batches")
+}
+
+/// Диплом конкретного студента (знімок з XML ЄДЕБО + зведена відомість).
+model Diploma {
+  id      String        @id @default(uuid())
+  batchId String?       @map("batch_id")
+  batch   DiplomaBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  templateId String?          @map("template_id")
+  template   DiplomaTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  // ── Особа (знімок з XML) ──
+  lastNameUk     String  @map("last_name_uk")
+  firstNameUk    String  @map("first_name_uk")
+  lastNameEn     String? @map("last_name_en")
+  firstNameEn    String? @map("first_name_en")
+  birthday       DateTime?
+  edeboPersonCode   String? @map("edebo_person_code")     // PersonCode (GUID)
+  personId          Int?    @map("person_id")             // код картки фіз. особи в ЄДЕБО (§1.4 додатка)
+  personEducationId Int?    @map("person_education_id")    // код картки навчання в ЄДЕБО
+  inn            String?
+  sexName        String? @map("sex_name")
+
+  // ── Документ ──
+  documentSeries String?   @map("document_series") // X26
+  documentNumber String?   @map("document_number")
+  supplementId   Int?      @map("supplement_id")   // реєстр. номер додатка
+  graduateDate   DateTime? @map("graduate_date")
+  issueDate      DateTime? @map("issue_date")
+
+  // ── Академічне (знімок) ──
+  specialityName    String? @map("speciality_name")
+  specialityNameEn  String? @map("speciality_name_en")
+  qualificationName String? @map("qualification_name")
+  studyProgramName  String? @map("study_program_name")
+  studyProgramNameEn String? @map("study_program_name_en")
+  studyGroupName    String? @map("study_group_name")
+  courseName        String? @map("course_name")
+  accreditationName   String? @map("accreditation_name")
+  accreditationNameEn String? @map("accreditation_name_en")
+
+  // ── Підпис / заклад (знімок) ──
+  bossFio              String? @map("boss_fio")     // Ірина ВАХОВИЧ
+  bossPost             String? @map("boss_post")    // Ректор
+  bossFioEn            String? @map("boss_fio_en")
+  bossPostEn           String? @map("boss_post_en")
+  universityPrintName   String? @map("university_print_name")
+  universityPrintNameEn String? @map("university_print_name_en")
+
+  paymentTypeName   String? @map("payment_type_name")
+  educationFormName String? @map("education_form_name")
+
+  // ── Документ про освіту — підстава для вступу (§6.2.2, з ЄДЕБО physPersons/documents) ──
+  entryDocumentUk          String?  @map("entry_document_uk")            // Опис документа укр.
+  entryDocumentEn          String?  @map("entry_document_en")            // Опис документа англ.
+  entryYearEnd             Int?     @map("entry_year_end")               // Рік закінчення поперед. освіти (резерв)
+
+  // ── Період навчання §7.1 (зі Student.educationDateBegin/End, матч за personCodeU) ──
+  studyDateBegin           DateTime? @map("study_date_begin")
+  studyDateEnd             DateTime? @map("study_date_end")
+
+  // ── Ручний ввід ──
+  qualificationWorkTitleUk String?  @map("qualification_work_title_uk")
+  qualificationWorkTitleEn String?  @map("qualification_work_title_en")
+  /// true = з відзнакою. Авто за §4.5 з можливістю override.
+  isHonors  Boolean       @default(false) @map("is_honors")
+  status    DiplomaStatus @default(DRAFT)
+
+  components DiplomaComponent[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([batchId])
+  @@index([templateId])
+  @@map("diplomas")
+}
+
+/// Рядок зведеної відомості диплома (знімок ОК + оцінка).
+model DiplomaComponent {
+  id        String  @id @default(uuid())
+  diplomaId String  @map("diploma_id")
+  diploma   Diploma @relation(fields: [diplomaId], references: [id], onDelete: Cascade)
+
+  code        String?
+  nameUk      String               @map("name_uk")
+  nameEn      String?              @map("name_en")
+  ects        Decimal?             @db.Decimal(5, 1)
+  type        DiplomaComponentType
+  controlForm TermControlForm?     @map("control_form") // шкала оцінювання (див. DiplomaTemplateComponent)
+  orderIndex  Int                  @map("order_index")
+  grade       DiplomaGrade?
+
+  @@index([diplomaId, orderIndex])
+  @@map("diploma_components")
 }

@@ -134,6 +134,8 @@ export class ClassroomService {
         number: dto.number,
         name: dto.name,
         ...(dto.teacherId && { teacherId: dto.teacherId }),
+        ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        ...(dto.type !== undefined && { type: dto.type }),
         photos: []
       }
     })
@@ -159,7 +161,9 @@ export class ClassroomService {
       data: {
         ...(dto.number && { number: dto.number }),
         ...(dto.name && { name: dto.name }),
-        ...(dto.teacherId !== undefined && { teacherId: dto.teacherId })
+        ...(dto.teacherId !== undefined && { teacherId: dto.teacherId }),
+        ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        ...(dto.type !== undefined && { type: dto.type })
       }
     })
   }

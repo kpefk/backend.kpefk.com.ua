@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { ConfigService } from '@nestjs/config'
+import type { Prisma } from '@prisma/client'
 
 import { PrismaService } from '@/prisma/prisma.service'
 import { EdboService, EdboPersonDocument } from '@/edbo/core/edbo.service'
@@ -176,6 +177,59 @@ interface EdboStaffListParams {
   pageSize: number
 }
 
+// ── Тип відповіді ЄДЕБО API: інформація про заклад (university/get) ─
+
+/** Підмножина полів UniversityInfo, що зберігаються в окремих колонках. */
+interface EdboUniversityInfo {
+  universityId: number
+  code: string | null
+  name: string | null
+  shortName: string | null
+  nameEn: string | null
+  shortNameEn: string | null
+  // Жива відповідь ЄДЕБО віддає `edrpo` / `universityType`
+  // (документований приклад показує `edrpou`/`universityTypeName`) — читаємо обидва.
+  edrpo?: string | null
+  edrpou?: string | null
+  registrationDate: string | null
+  universityType?: string | null
+  universityTypeName?: string | null
+  educationType: string | null
+  juristicalType: string | null
+  finansingType: string | null
+  governanceType: string | null
+  universityOrgPravFormName: string | null
+  riskRank: string | null
+  isClosed: boolean
+  closeStatusTypeName: string | null
+  closeReason: string | null
+  closeDate: string | null
+  isMilitaryChair: boolean
+  postIndex: string | null
+  katottgFullName: string | null
+  streetTypeName: string | null
+  addressFull: string | null
+  houseNumber: string | null
+  postIndexLegal: string | null
+  katottgFullNameU: string | null
+  streetTypeNameL: string | null
+  addressFullL: string | null
+  houseNumberL: string | null
+  phoneNumber: string | null
+  email: string | null
+  webSite: string | null
+  rectorFullName: string | null
+  bossLastName: string | null
+  bossFirstName: string | null
+  bossMiddleName: string | null
+  rectorFullNameGenCase: string | null
+  rectorPosition: string | null
+  rectorPhone: string | null
+  rectorEmail: string | null
+  rectorWorkDateStart: string | null
+  rectorWorkDateFinish: string | null
+}
+
 // ── Результат синхронізації ───────────────────────────────────────
 
 export interface SyncResult {
@@ -184,6 +238,12 @@ export interface SyncResult {
   /** Пропущено: modifyDate не змінився з часу останнього sync */
   skipped: number
   total: number
+}
+
+export interface UniversitySyncResult {
+  universityId: number
+  name: string | null
+  syncedAt: string
 }
 
 // ── Константи пагінації ───────────────────────────────────────────
@@ -251,7 +311,65 @@ export class EdboSyncService {
     }
   }
 
+  /**
+   * Щотижнева синхронізація інформації про заклад освіти (POST /api/university/get).
+   * Запускається щопонеділка о 03:00 (окремо від щоденної о 02:00).
+   */
+  @Cron('0 3 * * 1', { name: 'university-weekly-sync' })
+  public async scheduledUniversitySync(): Promise<void> {
+    this.logger.log('Scheduled weekly university sync started')
+    try {
+      const r = await this.syncUniversity()
+      this.logger.log(`University weekly sync done: ${r.name ?? r.universityId}`)
+    } catch (error) {
+      this.logger.error('University weekly sync failed', error)
+    }
+  }
+
   // ── Публічні методи синхронізації ────────────────────────────────
+
+  /**
+   * Синхронізує інформацію про заклад освіти з ЄДЕБО (POST /api/university/get).
+   *
+   * Один запис University (universityId = EDEBO_CODE) upsert-иться. Корисні поля
+   * винесено в окремі колонки, повна відповідь зберігається в `raw`.
+   */
+  /** Повертає збережену інформацію про заклад (без важкого поля `raw`). */
+  public getUniversity() {
+    return this.prisma.university.findFirst({ omit: { raw: true } })
+  }
+
+  public async syncUniversity(): Promise<UniversitySyncResult> {
+    this.logger.log('Syncing university info from ЄДЕБО...')
+
+    const syncStartedAt = new Date()
+
+    const info = await this.edboService.post<EdboUniversityInfo>(
+      '/api/university/get',
+      { universityId: this.universityId },
+    )
+    if (!info) {
+      throw new Error('ЄДЕБО не повернув інформацію про заклад')
+    }
+
+    const data = this.mapUniversityData(info)
+    const saved = await this.prisma.university.upsert({
+      where: { universityId: this.universityId },
+      create: data,
+      update: data,
+      select: { name: true, syncedAt: true },
+    })
+
+    await this.syncStateService.setDate(SYNC_KEYS.UNIVERSITY, syncStartedAt)
+
+    this.logger.log(`University sync done: ${saved.name ?? this.universityId}`)
+    return {
+      universityId: this.universityId,
+      name: saved.name,
+      syncedAt: saved.syncedAt.toISOString(),
+    }
+  }
+
 
   /**
    * Синхронізує студентів з ЄДЕБО з підтримкою інкрементального оновлення.
@@ -860,6 +978,57 @@ export class EdboSyncService {
       dateFire: r.dateFire ? new Date(r.dateFire) : null,
       coursesInfo: r.coursesInfo,
       modifyDate: r.dateLastChange ? new Date(r.dateLastChange) : null,
+    }
+  }
+
+  private mapUniversityData(r: EdboUniversityInfo): Prisma.UniversityCreateInput {
+    const street = (type: string | null, name: string | null): string | null => {
+      const v = [type, name].filter(Boolean).join(' ').trim()
+      return v.length > 0 ? v : null
+    }
+
+    return {
+      universityId: r.universityId,
+      code: r.code ?? null,
+      name: r.name ?? null,
+      shortName: r.shortName ?? null,
+      nameEn: r.nameEn ?? null,
+      shortNameEn: r.shortNameEn ?? null,
+      edrpou: r.edrpo ?? r.edrpou ?? null,
+      registrationDate: r.registrationDate ? new Date(r.registrationDate) : null,
+      universityTypeName: r.universityType ?? r.universityTypeName ?? null,
+      educationType: r.educationType ?? null,
+      juristicalType: r.juristicalType ?? null,
+      finansingType: r.finansingType ?? null,
+      governanceType: r.governanceType ?? null,
+      orgPravForm: r.universityOrgPravFormName ?? null,
+      riskRank: r.riskRank ?? null,
+      isClosed: r.isClosed ?? false,
+      closeStatusTypeName: r.closeStatusTypeName ?? null,
+      closeReason: r.closeReason ?? null,
+      closeDate: r.closeDate ? new Date(r.closeDate) : null,
+      isMilitaryChair: r.isMilitaryChair ?? false,
+      postIndex: r.postIndex ?? null,
+      katottgFullName: r.katottgFullName ?? null,
+      addressStreet: street(r.streetTypeName, r.addressFull),
+      houseNumber: r.houseNumber ?? null,
+      postIndexLegal: r.postIndexLegal ?? null,
+      katottgFullNameU: r.katottgFullNameU ?? null,
+      addressStreetLegal: street(r.streetTypeNameL, r.addressFullL),
+      houseNumberLegal: r.houseNumberL ?? null,
+      phoneNumber: r.phoneNumber ?? null,
+      email: r.email ?? null,
+      webSite: r.webSite ?? null,
+      rectorFullName: r.rectorFullName ?? null,
+      rectorLastName: r.bossLastName ?? null,
+      rectorFirstName: r.bossFirstName ?? null,
+      rectorMiddleName: r.bossMiddleName ?? null,
+      rectorFullNameGenCase: r.rectorFullNameGenCase ?? null,
+      rectorPosition: r.rectorPosition ?? null,
+      rectorPhone: r.rectorPhone ?? null,
+      rectorEmail: r.rectorEmail ?? null,
+      raw: r as unknown as Prisma.InputJsonValue,
+      syncedAt: new Date(),
     }
   }
 

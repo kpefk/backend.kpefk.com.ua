@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
@@ -78,6 +79,8 @@ export class SubjectAssignmentDto {
   /** Режим розподілу практик/лаб для ОК-семестру (спільний для всіх його subject'ів). */
   practiceMode!: LoadDistributionMode
   labMode!: LoadDistributionMode
+  /** Кількість підгруп (1 = без поділу). */
+  subgroupCount!: number
   /** Сума годин по всіх lesson rows */
   totalHours!: number
   lessons!: LessonAssignmentDto[]
@@ -170,4 +173,11 @@ export class SetDistributionModeDto {
   @IsOptional()
   @IsEnum(LoadDistributionMode)
   labMode?: LoadDistributionMode
+
+  /** Кількість підгруп (1 = без поділу; ≥2 — усі види занять ведуться окремо). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(4)
+  subgroupCount?: number
 }

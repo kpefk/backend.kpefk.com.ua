@@ -1217,4 +1217,190 @@ export class ElectivesService {
     const withSelection = new Set(registrations.map(r => r.studentId))
     return students.filter(s => !withSelection.has(s.id))
   }
+
+  // ── Print data: Додаток 2 (Заява на вибір ВК) ──────────────────────
+
+  /**
+   * §3.4 Положення — дані для друку Додатку 2 (заява студента на вибір ВК).
+   * Повертає дані студента + список доступних ВК для вибору.
+   */
+  public async getAppendix2Data(studentId: string, seasonId: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true, personFIO: true, groupId: true },
+    })
+    if (!student) throw new NotFoundException('Студента не знайдено.')
+
+    const group = student.groupId
+      ? await this.prisma.group.findUnique({
+          where: { id: student.groupId },
+          select: { id: true, name: true },
+        })
+      : null
+
+    const season = await this.prisma.electiveBlockSeason.findUnique({
+      where: { id: seasonId },
+      include: {
+        block: { select: { name: true, semesterNumber: true } },
+        offerings: {
+          include: {
+            component: {
+              select: { id: true, code: true, name: true, totalEcts: true },
+            },
+          },
+        },
+      },
+    })
+    if (!season) throw new NotFoundException('Сезон не знайдено.')
+
+    const selection = await this.prisma.studentElectiveSelection.findUnique({
+      where: { studentId_seasonId: { studentId, seasonId } },
+      select: { componentId: true, method: true, status: true },
+    })
+
+    return {
+      student: { id: student.id, fullName: student.personFIO, group: group?.name ?? '' },
+      block: { name: season.block.name, semester: season.block.semesterNumber },
+      academicYear: season.academicYear,
+      offerings: season.offerings.map((o) => ({
+        componentId: o.component.id,
+        code: o.component.code,
+        name: o.component.name,
+        ects: o.component.totalEcts,
+        syllabusUrl: o.syllabusUrl,
+        isHigherEd: o.isHigherEd,
+      })),
+      currentSelection: selection
+        ? { componentId: selection.componentId, method: selection.method, status: selection.status }
+        : null,
+    }
+  }
+
+  // ── Print data: Додаток 3 (Список зарахованих на ВК) ───────────────
+
+  /**
+   * §3.9 Положення — дані для друку Додатку 3.
+   * Список студентів групи з вказанням способу вибору ВК (Заява | Наказ).
+   */
+  public async getAppendix3Data(seasonId: string, groupId: string) {
+    const season = await this.prisma.electiveBlockSeason.findUnique({
+      where: { id: seasonId },
+      include: {
+        block: { select: { name: true, semesterNumber: true } },
+        electiveSeason: { select: { academicYear: true } },
+      },
+    })
+    if (!season) throw new NotFoundException('Сезон не знайдено.')
+
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+      select: { id: true, name: true },
+    })
+    if (!group) throw new NotFoundException('Групу не знайдено.')
+
+    const students = await this.prisma.student.findMany({
+      where: { groupId } as never,
+      select: { id: true, personFIO: true },
+      orderBy: { personFIO: 'asc' },
+    })
+
+    const selections = await this.prisma.studentElectiveSelection.findMany({
+      where: {
+        seasonId,
+        studentId: { in: students.map((s) => s.id) },
+        status: { not: SelectionStatus.CANCELLED },
+      },
+      include: {
+        component: { select: { id: true, code: true, name: true } },
+      },
+    })
+
+    const selMap = new Map(selections.map((s) => [s.studentId, s]))
+
+    return {
+      title: `Додаток 3 — Список студентів групи ${group.name}`,
+      block: season.block.name,
+      semester: season.block.semesterNumber,
+      academicYear: season.electiveSeason?.academicYear ?? season.academicYear,
+      group: group.name,
+      rows: students.map((s, i) => {
+        const sel = selMap.get(s.id)
+        return {
+          no: i + 1,
+          fullName: s.personFIO,
+          componentName: sel?.component.name ?? '—',
+          componentCode: sel?.component.code ?? '',
+          method: sel?.method ?? null,
+          methodLabel: sel?.method === SelectionMethod.VOLUNTARY
+            ? 'Заява'
+            : sel?.method === SelectionMethod.ASSIGNED
+              ? 'Наказ'
+              : '—',
+        }
+      }),
+      totalStudents: students.length,
+      voluntaryCount: selections.filter((s) => s.method === SelectionMethod.VOLUNTARY).length,
+      assignedCount: selections.filter((s) => s.method === SelectionMethod.ASSIGNED).length,
+    }
+  }
+
+  // ── Validation: 10% threshold (ст.54 п.17 Закону 2745-VIII) ────────
+
+  /**
+   * Перевіряє, чи вибіркова частина навчального плану
+   * складає ≥ 10% від загального обсягу ЄКТС.
+   */
+  public async validateElectiveThreshold(versionId: string) {
+    const version = await this.prisma.curriculumVersion.findUnique({
+      where: { id: versionId },
+      include: {
+        curriculum: { select: { totalEcts: true } },
+        sections: {
+          include: {
+            components: {
+              select: { totalEcts: true, isMandatory: true, electiveBlockId: true },
+            },
+            electiveBlocks: {
+              include: {
+                options: { select: { totalEcts: true } },
+              },
+            },
+          },
+        },
+      },
+    })
+    if (!version) throw new NotFoundException('Версію навчального плану не знайдено.')
+
+    const totalEcts = Number(version.curriculum.totalEcts)
+
+    let electiveEcts = 0
+    for (const section of version.sections) {
+      if (section.sectionType === 'ELECTIVE' || section.sectionType === 'ELECTIVE_OPP') {
+        for (const comp of section.components) {
+          electiveEcts += Number(comp.totalEcts)
+        }
+      }
+      for (const block of section.electiveBlocks) {
+        if (block.options.length > 0) {
+          const maxEcts = Math.max(...block.options.map((o) => Number(o.totalEcts)))
+          electiveEcts += maxEcts
+        }
+      }
+    }
+
+    const percentage = totalEcts > 0 ? (electiveEcts / totalEcts) * 100 : 0
+    const isValid = percentage >= 10
+
+    return {
+      versionId,
+      totalEcts,
+      electiveEcts: Math.round(electiveEcts * 100) / 100,
+      percentage: Math.round(percentage * 100) / 100,
+      threshold: 10,
+      isValid,
+      message: isValid
+        ? `Вибіркова частина (${percentage.toFixed(1)}%) відповідає вимозі ≥ 10%.`
+        : `Вибіркова частина (${percentage.toFixed(1)}%) НЕ відповідає вимозі ≥ 10% (ст. 54 п. 17 Закону №2745-VIII).`,
+    }
+  }
 }

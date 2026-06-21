@@ -9,6 +9,7 @@ import { UserModule } from '@/user/user.module'
 import { EdboSyncController } from './edbo-sync.controller'
 import { EdboSyncService } from './edbo-sync.service'
 import { SyncStateService } from './sync-state.service'
+import { UniversityController } from './university.controller'
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { SyncStateService } from './sync-state.service'
     UserModule,
     GroupsModule,
   ],
-  controllers: [EdboSyncController],
+  controllers: [EdboSyncController, UniversityController],
   providers: [EdboSyncService, SyncStateService],
   exports: [EdboSyncService],
 })

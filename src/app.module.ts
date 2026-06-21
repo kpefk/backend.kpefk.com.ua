@@ -25,6 +25,8 @@ import { GroupsModule } from './groups/groups.module'
 import { CurriculumModule } from './curriculum/curriculum.module'
 import { ElectivesModule } from './electives/electives.module'
 import { GroupLeaderModule } from './group-leader/group-leader.module'
+import { ScheduleModule as ScheduleFeatureModule } from './schedule/schedule.module'
+import { DiplomaModule } from './diploma/diploma.module'
 
 @Module({
 	imports: [
@@ -69,6 +71,8 @@ import { GroupLeaderModule } from './group-leader/group-leader.module'
 		CurriculumModule,
 		ElectivesModule,
 		GroupLeaderModule,
+		ScheduleFeatureModule,
+		DiplomaModule,
 	]
 })
 export class AppModule {}

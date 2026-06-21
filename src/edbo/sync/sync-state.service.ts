@@ -6,6 +6,7 @@ import { PrismaService } from '@/prisma/prisma.service'
 export const SYNC_KEYS = {
   STUDENTS: 'students_last_sync_at',
   STAFF: 'staff_last_sync_at',
+  UNIVERSITY: 'university_last_sync_at',
 } as const
 
 /**

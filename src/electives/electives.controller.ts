@@ -257,6 +257,45 @@ export class ElectivesController {
     return this.service.getStudentsWithoutSelectionV2(groupId, seasonId)
   }
 
+  // ── Print data: Додаток 2 + Додаток 3 (Положення КПЕФК) ──────────
+
+  @ApiOperation({ summary: 'Дані для друку Додатку 2 (заява студента, §3.4)' })
+  @ApiQuery({ name: 'studentId', required: true })
+  @ApiQuery({ name: 'seasonId', required: true })
+  @Authorization('HEAD_OF_DEPARTMENT', 'DEPUTY_DIRECTOR', 'DIRECTOR', 'ADMINISTRATOR')
+  @Get('admin/appendix2')
+  @HttpCode(HttpStatus.OK)
+  public getAppendix2Data(
+    @Query('studentId') studentId: string,
+    @Query('seasonId') seasonId: string,
+  ) {
+    return this.service.getAppendix2Data(studentId, seasonId)
+  }
+
+  @ApiOperation({ summary: 'Дані для друку Додатку 3 (список зарахованих, §3.9)' })
+  @ApiQuery({ name: 'seasonId', required: true })
+  @ApiQuery({ name: 'groupId', required: true })
+  @Authorization('HEAD_OF_DEPARTMENT', 'DEPUTY_DIRECTOR', 'DIRECTOR', 'ADMINISTRATOR')
+  @Get('admin/appendix3')
+  @HttpCode(HttpStatus.OK)
+  public getAppendix3Data(
+    @Query('seasonId') seasonId: string,
+    @Query('groupId') groupId: string,
+  ) {
+    return this.service.getAppendix3Data(seasonId, groupId)
+  }
+
+  // ── Validation: 10% ECTS threshold ──────────────────────────────────
+
+  @ApiOperation({ summary: 'Перевірка порогу 10% ВК (ст.54 п.17 Закону 2745-VIII)' })
+  @ApiQuery({ name: 'versionId', required: true })
+  @Authorization('HEAD_OF_DEPARTMENT', 'DEPUTY_DIRECTOR', 'DIRECTOR', 'ADMINISTRATOR')
+  @Get('admin/validate-threshold')
+  @HttpCode(HttpStatus.OK)
+  public validateElectiveThreshold(@Query('versionId') versionId: string) {
+    return this.service.validateElectiveThreshold(versionId)
+  }
+
   // ── Deprecated: old catalog + selection routes ────────────────────
 
   /** @deprecated */
