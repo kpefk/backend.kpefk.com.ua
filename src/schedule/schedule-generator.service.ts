@@ -5,6 +5,8 @@ import type { LessonType, Prisma, WeekParity } from '@prisma/client'
 import { PrismaService } from '@/prisma/prisma.service'
 
 import type {
+  GenerateAllResultDto,
+  GenerateAllSchedulesDto,
   GenerateScheduleDto,
   GenerateScheduleResultDto,
 } from './dto/schedule.dto'
@@ -253,6 +255,75 @@ export class ScheduleGeneratorService {
     return {
       schedule: await this.scheduleService.toScheduleDto(schedule.id),
       warnings: [...new Set(warnings)],
+    }
+  }
+
+  /**
+   * Масова генерація розкладу для ВСІХ груп, що мають РНП на цей рік+семестр.
+   * `dto.semesterNumber` — позиція в навчальному році (1 = осінній, 2 = весняний).
+   * Для кожної групи реальний номер семестру визначається з її WorkingCurriculum.
+   * Групи генеруються послідовно — кожна наступна враховує вже зайняті
+   * викладача/аудиторії попередніх (бо generate() читає чужі заняття з БД).
+   */
+  public async generateAll(
+    dto: GenerateAllSchedulesDto,
+    userId: string,
+  ): Promise<GenerateAllResultDto> {
+    const semesterPosition = dto.semesterNumber
+    const positionIndex = semesterPosition - 1
+
+    const eligible = await this.scheduleService.getEligibleGroups(dto.academicYear)
+    const targets = eligible.filter(
+      (g) =>
+        g.hasWorkingCurriculum && g.semesterNumbers.length > positionIndex,
+    )
+
+    const results: GenerateAllResultDto['results'] = []
+    let totalEntries = 0
+
+    for (const g of targets) {
+      const actualSemester = g.semesterNumbers[positionIndex]
+      try {
+        const r = await this.generate(
+          {
+            groupId: g.groupId,
+            academicYear: dto.academicYear,
+            semesterNumber: actualSemester,
+          },
+          userId,
+        )
+        totalEntries += r.schedule.entries.length
+        results.push({
+          groupId: g.groupId,
+          groupName: g.groupName,
+          semesterNumber: actualSemester,
+          entries: r.schedule.entries.length,
+          warnings: r.warnings,
+        })
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        this.logger.warn(`generateAll: група ${g.groupName} — ${message}`)
+        results.push({
+          groupId: g.groupId,
+          groupName: g.groupName,
+          semesterNumber: actualSemester,
+          entries: 0,
+          warnings: [message],
+        })
+      }
+    }
+
+    this.logger.log(
+      `generateAll year=${dto.academicYear} sem=${semesterPosition} (position): ` +
+        `${targets.length} груп, ${totalEntries} занять`,
+    )
+
+    return {
+      academicYear: dto.academicYear,
+      term: semesterPosition,
+      groupsProcessed: targets.length,
+      totalEntries,
+      results,
     }
   }
 

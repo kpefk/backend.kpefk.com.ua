@@ -30,6 +30,7 @@ import {
   CopyScheduleDto,
   CreateScheduleEntryDto,
   CreateSubstitutionDto,
+  GenerateAllSchedulesDto,
   GenerateScheduleDto,
   MassReplaceDto,
   SetHomeroomDto,
@@ -197,6 +198,30 @@ export class ScheduleController {
       groupId: dto.groupId,
       semesterNumber: dto.semesterNumber,
       entries: result.schedule.entries.length,
+    })
+    return result
+  }
+
+  @ApiOperation({
+    summary: 'Згенерувати розклад одразу всім групам',
+    description:
+      'Масово перегенеровує розклади всіх груп, що мають РНП на обраний ' +
+      'рік+семестр. Групи опрацьовуються послідовно з урахуванням зайнятості ' +
+      'викладачів/аудиторій. Повертає GenerateAllResultDto з підсумком по групах.',
+  })
+  @ApiResponse({ status: 201, description: 'GenerateAllResultDto' })
+  @Authorization(...DISPATCHER_ROLES)
+  @Post('generate-all')
+  @HttpCode(HttpStatus.CREATED)
+  public async generateAll(
+    @Body() dto: GenerateAllSchedulesDto,
+    @Authorized('id') userId: string,
+  ) {
+    const result = await this.generatorService.generateAll(dto, userId)
+    await this.audit.record(userId, 'GENERATE_ALL', dto.academicYear, {
+      semesterNumber: dto.semesterNumber,
+      groupsProcessed: result.groupsProcessed,
+      totalEntries: result.totalEntries,
     })
     return result
   }

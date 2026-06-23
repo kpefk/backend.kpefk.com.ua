@@ -16,22 +16,36 @@ export class DiplomaTemplateService {
   public constructor(private readonly prisma: PrismaService) {}
 
   public async list() {
-    const templates = await this.prisma.diplomaTemplate.findMany({
-      orderBy: [{ specialtyCode: 'asc' }, { name: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        specialtyCode: true,
-        specialtyName: true,
-        variant: true,
-        isActive: true,
-        notes: true,
-        diplomaDocx: true,
-        addendumDocx: true,
-        updatedAt: true,
-        _count: { select: { components: true } },
-      },
-    })
+    // Не тягнемо самі .docx-блоби (можуть бути по кілька сотень КБ кожен) —
+    // лише прапорці наявності файлів через окремі легкі запити за id.
+    const [templates, withDiploma, withAddendum] = await Promise.all([
+      this.prisma.diplomaTemplate.findMany({
+        orderBy: [{ specialtyCode: 'asc' }, { name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          specialtyCode: true,
+          specialtyName: true,
+          variant: true,
+          isActive: true,
+          notes: true,
+          updatedAt: true,
+          _count: { select: { components: true } },
+        },
+      }),
+      this.prisma.diplomaTemplate.findMany({
+        where: { diplomaDocx: { not: null } },
+        select: { id: true },
+      }),
+      this.prisma.diplomaTemplate.findMany({
+        where: { addendumDocx: { not: null } },
+        select: { id: true },
+      }),
+    ])
+
+    const hasDiploma = new Set(withDiploma.map((t) => t.id))
+    const hasAddendum = new Set(withAddendum.map((t) => t.id))
+
     return templates.map((t) => ({
       id: t.id,
       name: t.name,
@@ -40,8 +54,8 @@ export class DiplomaTemplateService {
       variant: t.variant,
       isActive: t.isActive,
       notes: t.notes,
-      hasDiplomaDocx: t.diplomaDocx !== null,
-      hasAddendumDocx: t.addendumDocx !== null,
+      hasDiplomaDocx: hasDiploma.has(t.id),
+      hasAddendumDocx: hasAddendum.has(t.id),
       componentCount: t._count.components,
       updatedAt: t.updatedAt.toISOString(),
     }))

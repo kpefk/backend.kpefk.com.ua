@@ -111,6 +111,28 @@ export class GenerateScheduleResultDto {
   warnings!: string[]
 }
 
+/** Результат генерації для однієї групи в межах масової генерації. */
+export class GenerateAllGroupResultDto {
+  groupId!: string
+  groupName!: string
+  /** Наскрізний семестр групи, що згенеровано для цього періоду. */
+  semesterNumber!: number
+  entries!: number
+  warnings!: string[]
+}
+
+/** Відповідь POST /schedule/generate-all (масова генерація всім групам). */
+export class GenerateAllResultDto {
+  academicYear!: string
+  /** Семестр навчального року: 1 = осінній, 2 = весняний. */
+  term!: number
+  /** Скільки груп опрацьовано. */
+  groupsProcessed!: number
+  /** Сумарно створено занять по всіх групах. */
+  totalEntries!: number
+  results!: GenerateAllGroupResultDto[]
+}
+
 /** Група в селекторі розкладу + прапор наявності РНП на рік. */
 export class EligibleGroupDto {
   groupId!: string
@@ -149,6 +171,18 @@ export class GenerateScheduleDto {
   @IsInt()
   @Min(1)
   @Max(12)
+  semesterNumber!: number
+}
+
+/** Масова генерація розкладу всім групам із РНП на цей рік+семестр. */
+export class GenerateAllSchedulesDto {
+  @IsString()
+  academicYear!: string
+
+  /** Позиція семестру в навчальному році: 1 = осінній, 2 = весняний. */
+  @IsInt()
+  @Min(1)
+  @Max(2)
   semesterNumber!: number
 }
 

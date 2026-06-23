@@ -98,6 +98,20 @@ export class DiplomaImportService {
       select: { id: true },
     })
 
+    // Кеш знімків компонентів за шаблоном — щоб не перезапитувати ту саму
+    // структуру шаблону для кожного диплома (партія здебільшого одного шаблону).
+    const snapshotCache = new Map<
+      string,
+      Prisma.DiplomaComponentCreateWithoutDiplomaInput[]
+    >()
+    const getSnapshot = async (templateId: string) => {
+      const cached = snapshotCache.get(templateId)
+      if (cached) return cached
+      const snapshot = await this.snapshotComponents(templateId)
+      snapshotCache.set(templateId, snapshot)
+      return snapshot
+    }
+
     for (const o of orders) {
       const templateId = resolveTemplate(o)
       const student = matchStudent(o)
@@ -110,7 +124,7 @@ export class DiplomaImportService {
         studyDateEnd: student?.educationDateEnd ?? null,
       }
       if (templateId) {
-        data.components = { create: await this.snapshotComponents(templateId) }
+        data.components = { create: await getSnapshot(templateId) }
       }
       await this.prisma.diploma.create({ data })
     }

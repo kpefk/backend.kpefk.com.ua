@@ -8,10 +8,58 @@ import { HONORS_EXCELLENT_RATIO } from './diploma.constants'
 import { SetGradesDto, UpdateDiplomaDto } from './dto/diploma.dto'
 
 type ComponentRow = Prisma.DiplomaComponentGetPayload<object>
+type TemplateComponentRow = Prisma.DiplomaTemplateComponentGetPayload<object>
 
 @Injectable()
 export class DiplomaService {
   public constructor(private readonly prisma: PrismaService) {}
+
+  /** Рядки знімка компонентів шаблону для набору дипломів (createMany data). */
+  private snapshotRows(
+    diplomaIds: string[],
+    components: TemplateComponentRow[],
+  ): Prisma.DiplomaComponentCreateManyInput[] {
+    return diplomaIds.flatMap((diplomaId) =>
+      components.map((c) => ({
+        diplomaId,
+        code: c.code,
+        nameUk: c.nameUk,
+        nameEn: c.nameEn,
+        ects: c.ects,
+        type: c.type,
+        controlForm: c.controlForm,
+        orderIndex: c.orderIndex,
+      })),
+    )
+  }
+
+  /**
+   * Атомарно призначає `templateId` набору дипломів і перезаписує їхні компоненти
+   * знімком зі шаблону — однією транзакцією (а не по транзакції на диплом).
+   */
+  private async reassignTemplate(
+    diplomaIds: string[],
+    templateId: string | null,
+    components: TemplateComponentRow[],
+  ): Promise<void> {
+    if (diplomaIds.length === 0) return
+    await this.prisma.$transaction([
+      this.prisma.diploma.updateMany({
+        where: { id: { in: diplomaIds } },
+        data: { templateId },
+      }),
+      this.prisma.diplomaComponent.deleteMany({
+        where: { diplomaId: { in: diplomaIds } },
+      }),
+      ...(components.length > 0
+        ? [
+            this.prisma.diplomaComponent.createMany({
+              data: this.snapshotRows(diplomaIds, components),
+            }),
+          ]
+        : []),
+    ])
+  }
 
   // ── Batches ────────────────────────────────────────────────────────────────
 
@@ -133,26 +181,11 @@ export class DiplomaService {
         })
       : []
 
-    for (const { id } of diplomas) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.diploma.update({ where: { id }, data: { templateId } })
-        await tx.diplomaComponent.deleteMany({ where: { diplomaId: id } })
-        if (components.length > 0) {
-          await tx.diplomaComponent.createMany({
-            data: components.map((c) => ({
-              diplomaId: id,
-              code: c.code,
-              nameUk: c.nameUk,
-              nameEn: c.nameEn,
-              ects: c.ects,
-              type: c.type,
-              controlForm: c.controlForm,
-              orderIndex: c.orderIndex,
-            })),
-          })
-        }
-      })
-    }
+    await this.reassignTemplate(
+      diplomas.map((d) => d.id),
+      templateId,
+      components,
+    )
 
     return { count: diplomas.length }
   }
@@ -350,26 +383,7 @@ export class DiplomaService {
         })
       : []
 
-    for (const targetId of targetIds) {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.diploma.update({ where: { id: targetId }, data: { templateId } })
-        await tx.diplomaComponent.deleteMany({ where: { diplomaId: targetId } })
-        if (components.length > 0) {
-          await tx.diplomaComponent.createMany({
-            data: components.map((c) => ({
-              diplomaId: targetId,
-              code: c.code,
-              nameUk: c.nameUk,
-              nameEn: c.nameEn,
-              ects: c.ects,
-              type: c.type,
-              controlForm: c.controlForm,
-              orderIndex: c.orderIndex,
-            })),
-          })
-        }
-      })
-    }
+    await this.reassignTemplate(targetIds, templateId, components)
 
     return { count: targetIds.length }
   }

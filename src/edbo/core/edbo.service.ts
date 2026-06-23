@@ -78,6 +78,8 @@ export class EdboService {
 
   private cachedToken: string | null = null;
   private tokenExpiresAt: number = 0;
+  /** In-flight запит токена — щоб паралельні виклики не авторизувались двічі. */
+  private tokenPromise: Promise<string> | null = null;
 
   // ── Авторизація ─────────────────────────────────────────────────
 
@@ -85,20 +87,31 @@ export class EdboService {
    * Повертає Bearer-токен. Використовує кешований токен до закінчення
    * його терміну дії (з буфером 60 секунд).
    *
-   * `POST /oauth/token`
+   * Single-flight: якщо токен уже запитується, паралельні виклики чекають
+   * на той самий запит, а не роблять власний `POST /oauth/token` (ЄДЕБО
+   * відхиляє одночасні авторизації — duplicate session key).
    */
   async getAccessToken(): Promise<string> {
-    const now = Date.now();
-
-    if (this.cachedToken && now < this.tokenExpiresAt) {
+    if (this.cachedToken && Date.now() < this.tokenExpiresAt) {
       return this.cachedToken;
     }
 
+    // Уже йде авторизація — приєднуємось до неї.
+    if (this.tokenPromise) {
+      return this.tokenPromise;
+    }
+
+    this.tokenPromise = this.fetchAndCacheToken().finally(() => {
+      this.tokenPromise = null;
+    });
+    return this.tokenPromise;
+  }
+
+  private async fetchAndCacheToken(): Promise<string> {
     const tokenData = await this.fetchToken();
     // expires_in повертається в секундах; зберігаємо з буфером 60 с
     this.cachedToken = tokenData.access_token;
-    this.tokenExpiresAt = now + (tokenData.expires_in - 60) * 1000;
-
+    this.tokenExpiresAt = Date.now() + (tokenData.expires_in - 60) * 1000;
     return this.cachedToken;
   }
 
@@ -121,10 +134,8 @@ export class EdboService {
     // ✅ Читаємо як текст — не падає на HTML
     const text = await response.text()
 
-    // Діагностичний лог — видали після вирішення проблеми
-    this.logger.debug(`ЄДЕБО /oauth/token [${response.status}]: ${text.slice(0, 300)}`)
-
     if (!response.ok) {
+      // Лог лише при помилці; на успіху НЕ логуємо тіло (містить access_token).
       this.logger.error(`ЄДЕБО auth failed [${response.status}]:`, text.slice(0, 300))
       throw new HttpException(
         'ЄДЕБО authentication failed',

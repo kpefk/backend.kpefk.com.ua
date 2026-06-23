@@ -27,6 +27,8 @@ import { ElectivesModule } from './electives/electives.module'
 import { GroupLeaderModule } from './group-leader/group-leader.module'
 import { ScheduleModule as ScheduleFeatureModule } from './schedule/schedule.module'
 import { DiplomaModule } from './diploma/diploma.module'
+import { SubgroupsModule } from './subgroups/subgroups.module'
+import { AttendanceModule } from './attendance/attendance.module'
 
 @Module({
 	imports: [
@@ -73,6 +75,8 @@ import { DiplomaModule } from './diploma/diploma.module'
 		GroupLeaderModule,
 		ScheduleFeatureModule,
 		DiplomaModule,
+		SubgroupsModule,
+		AttendanceModule,
 	]
 })
 export class AppModule {}

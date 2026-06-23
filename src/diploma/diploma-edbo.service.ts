@@ -14,11 +14,42 @@ interface EdboPhysPersonDocument {
   personDocumentTypeName: string | null
   documentSeries: string | null
   documentNumbers: string | null
+  documentDateGet: string | null // дата видачі документа (DD.MM.YYYY)
+  documentIssued: string | null // ким видано документ (заклад)
+  documentIssuedUniversityFullName: string | null // історична назва закладу в ЄДЕБО
   isCancelled: boolean | null
   isDeleted: boolean | null
   isEntrantDocument: number | boolean | null
   yearEnd: number | null
   specClasifierName: string | null
+}
+
+/** Відповідь ЄДЕБО API `POST /api/accreditationSpecialities/list`. */
+interface EdboAccreditationRecord {
+  certificateSpecialityId: number
+  qualificationGroupId: number
+  qualificationGroupName: string | null
+  redactionId: number
+  specialityId: number
+  specialityName: string | null
+  isBadSpecialization: boolean
+  specializationId: number | null
+  specializationName: string | null
+  isCertificateExist: boolean
+  certificateNumber: string | null
+  certificateSeries: string | null
+  certificateEndDate: string | null
+  certificateAccrReason: string | null
+  certificateAccrLevel: string | null
+  certificateIssueDate: string | null
+  certificateBlankNumber: string | null
+  certificateReceiveDate: string | null
+  certificatePrevDocument: string | null
+  certificateSigner: string | null
+  accreditationInstitutionId: number
+  accreditationInstitutionName: string | null
+  certificateProlongInfo: string | null
+  isBadMark: boolean
 }
 
 /** Назва типу укр. → англ. для типових документів про освіту (підстава для вступу). */
@@ -124,6 +155,121 @@ export class DiplomaEdboService {
     return { updated, skipped }
   }
 
+  // ── Accreditation sync ─────────────────────────────────────────────────────
+
+  /**
+   * Підтягує дані акредитації з ЄДЕБО для всіх активних шаблонів дипломів
+   * та оновлює поля accredit* на `DiplomaTemplate`.
+   *
+   * Викликає `POST /api/accreditationSpecialities/list` для кожного унікального
+   * коду спеціальності серед шаблонів і матчить за `specialityId` (код спеціальності).
+   */
+  public async syncAccreditationData(): Promise<{
+    updated: number
+    skipped: number
+    notFound: number
+  }> {
+    const universityId = this.configService.getOrThrow<number>('EDEBO_CODE')
+    if (!universityId) {
+      this.logger.warn('EDBO_CODE не встановлено — пропуск синхронізації акредитації')
+      return { updated: 0, skipped: 0, notFound: 0 }
+    }
+
+    const templates = await this.prisma.diplomaTemplate.findMany({
+      where: { isActive: true },
+      select: { id: true, specialtyCode: true, specialtyName: true },
+    })
+
+    if (templates.length === 0) {
+      this.logger.log('Немає активних шаблонів для синхронізації акредитації')
+      return { updated: 0, skipped: 0, notFound: 0 }
+    }
+
+    // Групуємо шаблони за кодом спеціальності для ефективного пошуку.
+    const templatesByCode = new Map<string, typeof templates>()
+    const templatesWithoutCode: typeof templates = []
+    for (const t of templates) {
+      if (t.specialtyCode) {
+        const code = t.specialtyCode.toUpperCase()
+        const arr = templatesByCode.get(code) ?? []
+        arr.push(t)
+        templatesByCode.set(code, arr)
+      } else {
+        templatesWithoutCode.push(t)
+      }
+    }
+
+    // Запитуємо всі акредитації закладу (max 500 записів).
+    let allAccreditations: EdboAccreditationRecord[] = []
+    try {
+      const result = await this.edbo.post<unknown>(
+        '/api/accreditationSpecialities/list',
+        { UniversityId: universityId, pageSize: 500 },
+      )
+      allAccreditations = Array.isArray(result) ? (result as EdboAccreditationRecord[]) : []
+    } catch (e) {
+      this.logger.error(`Помилка отримання акредитацій з ЄДЕБО: ${String(e)}`)
+      return { updated: 0, skipped: 0, notFound: templates.length }
+    }
+
+    this.logger.log(`Отримано ${allAccreditations.length} записів акредитації з ЄДЕБО`)
+
+    // Індексуємо за кодом спеціальності (SpecialityId — це числовий код, наприклад 122).
+    const accredBySpecCode = new Map<string, EdboAccreditationRecord>()
+    for (const a of allAccreditations) {
+      if (!a.isCertificateExist) continue // беремо лише діючі сертифікати
+      const specCode = String(a.specialityId)
+      accredBySpecCode.set(specCode, a)
+    }
+
+    let updated = 0
+    let skipped = 0
+    let notFound = 0
+
+    for (const [code, group] of templatesByCode) {
+      const accred = accredBySpecCode.get(code)
+      if (!accred) {
+        notFound += group.length
+        this.logger.warn(`Акредитацію для спеціальності ${code} не знайдено в ЄДЕБО`)
+        continue
+      }
+
+      const data: {
+        accrCertSeries: string | null
+        accrCertNumber: string | null
+        accrCertDate: string | null
+        accrCertEndDate: string | null
+        accrProtocolNumber: string | null
+        accrInstitutionName: string | null
+        accrInstitutionNameEn: string | null
+      } = {
+        accrCertSeries: accred.certificateSeries ?? null,
+        accrCertNumber: accred.certificateNumber ?? null,
+        accrCertDate: accred.certificateIssueDate ?? null,
+        accrCertEndDate: accred.certificateEndDate ?? null,
+        accrProtocolNumber: accred.certificateAccrReason ?? null,
+        accrInstitutionName: accred.accreditationInstitutionName ?? null,
+        accrInstitutionNameEn: null, // ЄДЕБО не повертає англійську назву органу акредитації
+      }
+
+      for (const t of group) {
+        await this.prisma.diplomaTemplate.update({
+          where: { id: t.id },
+          data,
+        })
+        updated++
+      }
+    }
+
+    // Шаблони без коду спеціальності — пропускаємо (неможливо матчити).
+    skipped += templatesWithoutCode.length
+
+    this.logger.log(
+      `Акредитацію оновлено: ${updated} шаблонів, не знайдено: ${notFound}, пропущено (без коду): ${skipped}`,
+    )
+    return { updated, skipped, notFound }
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   /**
@@ -153,18 +299,58 @@ export class DiplomaEdboService {
   }
 
   private formatUk(doc: EdboPhysPersonDocument): string {
-    const parts = [doc.personDocumentTypeName?.trim()]
+    const parts: string[] = []
+    const typeName = doc.personDocumentTypeName?.trim()
     const sn = [doc.documentSeries, doc.documentNumbers].filter(Boolean).join(' ').trim()
-    if (sn) parts.push(`№ ${sn}`)
-    return parts.filter(Boolean).join(', ')
+
+    if (typeName) parts.push(typeName)
+    if (sn) parts.push(sn)
+
+    const institution = doc.documentIssuedUniversityFullName?.trim() ?? doc.documentIssued?.trim()
+    if (institution) parts.push(institution)
+
+    const dateStr = this.normalizeDate(doc.documentDateGet)
+    if (dateStr) parts.push(dateStr)
+
+    return parts.join(', ')
   }
 
   private formatEn(doc: EdboPhysPersonDocument): string {
     const typeUk = doc.personDocumentTypeName ?? ''
     const en = DOC_TYPE_EN.find((m) => m.match.test(typeUk))?.en
     if (!en) return ''
+
+    const parts: string[] = [en]
     const sn = [doc.documentSeries, doc.documentNumbers].filter(Boolean).join(' ').trim()
-    return sn ? `${en}, No. ${sn}` : en
+    if (sn) parts.push(`No. ${sn}`)
+
+    const institution = doc.documentIssuedUniversityFullName?.trim() ?? doc.documentIssued?.trim()
+    if (institution) parts.push(institution)
+
+    const dateStr = this.normalizeDate(doc.documentDateGet)
+    if (dateStr) parts.push(dateStr)
+
+    return parts.join(', ')
+  }
+
+  /**
+   * Повертає дату у форматі DD.MM.YYYY для додатка.
+   * Підтримує вхідні формати: DD.MM.YYYY, YYYY-MM-DD, DD/MM/YYYY.
+   * Повертає порожній рядок якщо дата відсутня або не вдалося розпарсити.
+   */
+  private normalizeDate(raw: string | null): string {
+    if (!raw) return ''
+    const s = raw.trim()
+    // DD.MM.YYYY — вже правильний формат
+    const ddmmyyyy = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
+    if (ddmmyyyy) return `${ddmmyyyy[1]}.${ddmmyyyy[2]}.${ddmmyyyy[3]}`
+    // YYYY-MM-DD → DD.MM.YYYY
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`
+    // DD/MM/YYYY → DD.MM.YYYY
+    const slash = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (slash) return `${slash[1]}.${slash[2]}.${slash[3]}`
+    return ''
   }
 
   private truthy(v: number | boolean | null): boolean {

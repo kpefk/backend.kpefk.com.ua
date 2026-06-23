@@ -37,6 +37,7 @@ model User {
   electiveSelectionsConfirmed StudentElectiveSelection[]    @relation("ElectiveSelectionConfirmedBy")
   parentInfoUpdates       ParentInfo[]
   auditLogs               AuditLog[]
+  recordedLessonSessions  LessonSession[]               @relation("LessonSessionRecordedBy")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -190,6 +191,10 @@ model Student {
   electiveSelections    StudentElectiveSelection[]
   electiveRegistrations ElectiveRegistration[]
 
+  // Attendance domain (back-relations)
+  subgroups         StudentSubgroup[]
+  attendanceRecords AttendanceRecord[]
+
   parentInfo ParentInfo?
 
   @@map("students")
@@ -214,6 +219,8 @@ model Group {
   workingCurriculumAssignments GroupWorkingCurriculumAssignment[]
   subjectAssignments           TeacherLoadSubjectAssignment[]
   schedules                    Schedule[]
+  studentSubgroups             StudentSubgroup[]
+  lessonSessions               LessonSession[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -312,6 +319,7 @@ model Teacher {
   qualificationUpgrades      TeacherQualificationUpgrade[]
   scheduleEntries            ScheduleEntry[]
   substitutionReplacements   ScheduleSubstitution[]            @relation("SubstitutionTeacher")
+  lessonSessions             LessonSession[]
 
   @@map("teachers")
 }
@@ -762,6 +770,8 @@ model CurriculumComponentTerm {
   workingTerms       WorkingCurriculumComponentTerm[]
   subjectAssignments TeacherLoadSubjectAssignment[]
   scheduleEntries    ScheduleEntry[]
+  studentSubgroups   StudentSubgroup[]
+  lessonSessions     LessonSession[]
   /// @deprecated back-relation для ElectiveComponent.curriculumTermId (deprecated)
   electiveComponent  ElectiveComponent?
 
@@ -1526,7 +1536,8 @@ model ScheduleEntry {
   /// Посилання на онлайн-конференцію для дистанційного/змішаного заняття (ТЗ §3.6, §7.4).
   onlineUrl String? @map("online_url")
 
-  substitutions ScheduleSubstitution[]
+  substitutions  ScheduleSubstitution[]
+  lessonSessions LessonSession[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -1594,6 +1605,121 @@ model ScheduleSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("schedule_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                 SUBGROUPS + ATTENDANCE (електронний журнал)                  ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Членство студента в підгрупі конкретної дисципліни-семестру (поділ за списком/
+/// рівнем). Потрібне для журналу підгрупових занять (практичні/лабораторні/мови).
+model StudentSubgroup {
+  id String @id @default(uuid())
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Cascade)
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  /// Денормалізовано для запитів поділу по групі.
+  groupId String @map("group_id")
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  subgroupNumber Int @map("subgroup_number") // 1..N
+
+  assignedById String? @map("assigned_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([curriculumComponentTermId, studentId])
+  @@index([curriculumComponentTermId, subgroupNumber])
+  @@index([groupId, curriculumComponentTermId])
+  @@index([studentId])
+  @@map("student_subgroups")
+}
+
+/// Статус присутності студента на занятті (за замовчуванням — відсутній).
+enum AttendanceStatus {
+  ABSENT  // Відсутній
+  PRESENT // Присутній
+  LATE    // Запізнився
+}
+
+/// Одна фактична подія заняття = сторінка журналу на конкретну дату.
+/// Знімкує ідентичність заняття, щоб переживати перегенерацію розкладу
+/// (scheduleEntryId — мʼякий звʼязок, onDelete: SetNull).
+model LessonSession {
+  id String @id @default(uuid())
+
+  date           DateTime @db.Date
+  academicYear   String   @map("academic_year")
+  semesterNumber Int      @map("semester_number")
+
+  // ── Знімок ідентичності заняття ──
+  groupId String @map("group_id")
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+  subjectName               String                  @map("subject_name") @db.VarChar(300)
+
+  teacherId String  @map("teacher_id")
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  slotNumber     Int        @map("slot_number")
+  weekParity     WeekParity @map("week_parity")
+  lessonType     LessonType @map("lesson_type") // фактичний вид, обирає викладач
+  subgroupNumber Int        @default(0) @map("subgroup_number") // 0 = вся група
+
+  topic String? @db.VarChar(500)
+
+  /// Мʼякий звʼязок із заняттям розкладу (перегенерація не знищує журнал).
+  scheduleEntryId String?        @map("schedule_entry_id")
+  scheduleEntry   ScheduleEntry? @relation(fields: [scheduleEntryId], references: [id], onDelete: SetNull)
+
+  recordedById String? @map("recorded_by_id")
+  recordedBy   User?   @relation("LessonSessionRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  records AttendanceRecord[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt      @map("updated_at")
+  deletedAt DateTime? @map("deleted_at") // soft delete (аудит)
+
+  @@unique([groupId, date, slotNumber, subgroupNumber])
+  @@index([teacherId, date])
+  @@index([groupId, academicYear, semesterNumber])
+  @@index([curriculumComponentTermId])
+  @@index([date])
+  @@map("lesson_sessions")
+}
+
+/// Запис відвідуваності/оцінки студента на занятті.
+model AttendanceRecord {
+  id String @id @default(uuid())
+
+  lessonSessionId String        @map("lesson_session_id")
+  lessonSession   LessonSession @relation(fields: [lessonSessionId], references: [id], onDelete: Cascade)
+
+  studentId   String  @map("student_id")
+  student     Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  /// Знімок ПІБ — аудит і стабільність, якщо студент змінить групу.
+  studentName String  @map("student_name") @db.VarChar(300)
+
+  status  AttendanceStatus @default(ABSENT)
+  /// Поточна оцінка 1..12 (національна 12-бальна; 5-бальні значення вкладаються).
+  grade   Int?
+  comment String?          @db.VarChar(1000)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([lessonSessionId, studentId])
+  @@index([studentId])
+  @@index([lessonSessionId])
+  @@map("attendance_records")
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗

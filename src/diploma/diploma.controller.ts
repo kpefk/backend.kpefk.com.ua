@@ -28,7 +28,6 @@ import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
-import { EdboService } from '@/edbo/core/edbo.service'
 
 import { DiplomaEdboService } from './diploma-edbo.service'
 import { DiplomaGeneratorService, type DiplomaDocKind } from './diploma-generator.service'
@@ -70,7 +69,6 @@ export class DiplomaController {
     private readonly importService: DiplomaImportService,
     private readonly diplomaService: DiplomaService,
     private readonly generatorService: DiplomaGeneratorService,
-    private readonly edboService: EdboService,
     private readonly edboEntryService: DiplomaEdboService,
   ) {}
 
@@ -147,13 +145,15 @@ export class DiplomaController {
   @ApiQuery({ name: 'search', required: false })
   @Get('edbo/accreditation')
   @HttpCode(HttpStatus.OK)
-  public async getEdboAccreditation(@Query('search') search?: string) {
-    const universityId = Number(process.env.EDBO_CODE ?? '0')
-    const result = await this.edboService.post<unknown[]>(
-      '/api/accreditationSpecialities/list',
-      { UniversityId: universityId, SearchStr: search ?? '', pageSize: 100 },
-    )
-    return Array.isArray(result) ? result : []
+  public getEdboAccreditation(@Query('search') search?: string) {
+    return this.edboEntryService.lookupAccreditation(search)
+  }
+
+  @ApiOperation({ summary: 'Синхронізувати дані акредитації з ЄДЕБО для всіх шаблонів дипломів' })
+  @Post('edbo/accreditation/sync')
+  @HttpCode(HttpStatus.OK)
+  public syncAccreditation() {
+    return this.edboEntryService.syncAccreditationData()
   }
 
   // ── Diplomas ───────────────────────────────────────────────────────────────

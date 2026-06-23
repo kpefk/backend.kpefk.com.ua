@@ -53,11 +53,14 @@ export class DiplomaGeneratorService {
     if (diplomas.length === 0) throw new NotFoundException('У партії немає дипломів.')
 
     const zip = new PizZip()
+    const usedNames = new Set<string>()
     let added = 0
     for (const d of diplomas) {
       if (!this.templateBuffer(d, kind)) continue
       const doc = this.renderDiploma(d, kind)
-      zip.file(doc.filename, doc.buffer)
+      // Унікалізуємо назву в архіві: тезки не повинні перезаписувати один одного.
+      const filename = this.uniqueName(usedNames, doc.filename)
+      zip.file(filename, doc.buffer)
       added++
     }
     if (added === 0) {
@@ -100,6 +103,25 @@ export class DiplomaGeneratorService {
     return { buffer, filename: `${label}_${who}.docx` }
   }
 
+  /** Повертає назву, якої ще немає в наборі, додаючи суфікс _2, _3, … перед розширенням. */
+  private uniqueName(used: Set<string>, name: string): string {
+    if (!used.has(name)) {
+      used.add(name)
+      return name
+    }
+    const dot = name.lastIndexOf('.')
+    const base = dot === -1 ? name : name.slice(0, dot)
+    const ext = dot === -1 ? '' : name.slice(dot)
+    let i = 2
+    let candidate = `${base}_${i}${ext}`
+    while (used.has(candidate)) {
+      i++
+      candidate = `${base}_${i}${ext}`
+    }
+    used.add(candidate)
+    return candidate
+  }
+
   private templateBuffer(diploma: DiplomaRow, kind: DiplomaDocKind): Buffer | null {
     const bytes =
       kind === 'diploma' ? diploma.template?.diplomaDocx : diploma.template?.addendumDocx
@@ -128,6 +150,8 @@ export class DiplomaGeneratorService {
       edeboPersonCode: d.edeboPersonCode ?? '',
       personId: d.personId ?? '',               // §1.4 — код картки фіз. особи
       personEducationId: d.personEducationId ?? '',
+      inn: d.inn ?? '',                         // ІПН/РНОКПП
+      sexName: d.sexName ?? '',                 // Стать (Чоловіча/Жіноча)
       // Документ
       documentSeries: d.documentSeries ?? '',
       documentNumber: d.documentNumber ?? '',
@@ -145,6 +169,9 @@ export class DiplomaGeneratorService {
       accreditationName: d.accreditationName ?? '',
       accreditationNameEn: d.accreditationNameEn ?? '',
       groupName: d.studyGroupName ?? '',
+      courseName: d.courseName ?? '',           // Назва курсу (напр. "3 курс")
+      paymentTypeName: d.paymentTypeName ?? '', // Джерело фінансування (Бюджет/Контракт)
+      educationFormName: d.educationFormName ?? '', // Форма навчання (Денна/Заочна)
       // Підпис / заклад
       universityNameUk: d.universityPrintName ?? '',
       universityNameEn: d.universityPrintNameEn ?? '',
@@ -153,6 +180,7 @@ export class DiplomaGeneratorService {
       bossPost: d.bossPost ?? '',
       bossPostEn: d.bossPostEn ?? '',
       bossInitialsSurname: this.initialsSurname(d.bossFio),
+      bossInitialsSurnameEn: this.initialsSurname(d.bossFioEn),
       // Вступний документ (§6.2.2 — з ЄДЕБО)
       entryDocumentUk: d.entryDocumentUk ?? '',
       entryDocumentEn: d.entryDocumentEn ?? '',
@@ -182,9 +210,60 @@ export class DiplomaGeneratorService {
       studyPeriod: this.studyPeriod(d, t?.studyPeriod ?? null),
       accrCertSeries: t?.accrCertSeries ?? '',
       accrCertNumber: t?.accrCertNumber ?? '',
-      accrCertDate: t?.accrCertDate ?? '',
+      accrCertDate: this.fmtAccrDate(t?.accrCertDate ?? null),
+      accrCertEndDate: this.fmtAccrDate(t?.accrCertEndDate ?? null),
       accrProtocolNumber: t?.accrProtocolNumber ?? '',
+      accrInstitutionName: t?.accrInstitutionName ?? '',
+      accrInstitutionNameEn: t?.accrInstitutionNameEn ?? '',
+      // Готовий рядок сертифіката про акредитацію (з датою DD/MM/YYYY).
+      accreditationText: this.accreditationText(t),
     }
+  }
+
+  /**
+   * Композитний рядок сертифіката про акредитацію, напр.:
+   * «Сертифікат про акредитацію серія ДС № 006743, виданий Державною службою
+   *  якості освіти України (протокол № 13 від 08/12/2025)».
+   * Порожні частини акуратно опускаються (без «протокол №  від»).
+   */
+  private accreditationText(t: DiplomaRow['template']): string {
+    const series = t?.accrCertSeries?.trim() ?? ''
+    const number = t?.accrCertNumber?.trim() ?? ''
+    const institution = t?.accrInstitutionName?.trim() ?? ''
+    const protocol = t?.accrProtocolNumber?.trim() ?? ''
+    const date = this.fmtAccrDate(t?.accrCertDate ?? null)
+
+    if (!series && !number && !institution && !protocol && !date) return ''
+
+    let s = 'Сертифікат про акредитацію'
+    if (series) s += ` серія ${series}`
+    if (number) s += ` № ${number}`
+    if (institution) s += `, виданий ${institution}`
+
+    const inner: string[] = []
+    if (protocol) inner.push(`протокол № ${protocol}`)
+    if (date) inner.push(`від ${date}`)
+    if (inner.length > 0) s += ` (${inner.join(' ')})`
+
+    return s
+  }
+
+  /**
+   * Дата акредитації у форматі DD/MM/YYYY. Приймає ISO з часовою зоною
+   * («2021-04-21T00:00:00+03:00»), «DD.MM.YYYY», «DD/MM/YYYY», «YYYY-MM-DD».
+   * Розбираємо регулярками, а не через Date — щоб зсув часового поясу не
+   * зміщував календарну дату на день.
+   */
+  private fmtAccrDate(raw: string | null): string {
+    if (!raw) return ''
+    const s = raw.trim()
+    let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/) // ISO (з часовою зоною теж)
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`
+    m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/) // DD.MM.YYYY
+    if (m) return `${m[1]}/${m[2]}/${m[3]}`
+    m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/) // DD/MM/YYYY
+    if (m) return `${m[1]}/${m[2]}/${m[3]}`
+    return s
   }
 
   // ── Formatting ───────────────────────────────────────────────────────────────
@@ -228,7 +307,7 @@ export class DiplomaGeneratorService {
     return `${date.getUTCDate()} ${EN_MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`
   }
 
-  /** "Ірина ВАХОВИЧ" → "І. ВАХОВИЧ" (для §7.3.1). */
+  /** "Ірина ВАХОВИЧ" → "І. ВАХОВИЧ" (§7.3.1); працює і для латиниці. */
   private initialsSurname(fio: string | null): string {
     if (!fio) return ''
     const parts = fio.trim().split(/\s+/)
