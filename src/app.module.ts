@@ -29,6 +29,8 @@ import { ScheduleModule as ScheduleFeatureModule } from './schedule/schedule.mod
 import { DiplomaModule } from './diploma/diploma.module'
 import { SubgroupsModule } from './subgroups/subgroups.module'
 import { AttendanceModule } from './attendance/attendance.module'
+import { GradesModule } from './grades/grades.module'
+import { SurveysModule } from './surveys/surveys.module'
 
 @Module({
 	imports: [
@@ -77,6 +79,8 @@ import { AttendanceModule } from './attendance/attendance.module'
 		DiplomaModule,
 		SubgroupsModule,
 		AttendanceModule,
+		GradesModule,
+		SurveysModule,
 	]
 })
 export class AppModule {}

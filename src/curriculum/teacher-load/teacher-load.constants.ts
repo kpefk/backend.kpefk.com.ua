@@ -56,3 +56,60 @@ export const MAX_SUBGROUP_COUNT = 2
 export function teachingHoursLimit(rate: number): number {
   return Math.round(NORM_TEACHING_HOURS_PER_RATE * rate)
 }
+
+/**
+ * Норми проведення семестрового заліку (Наказ МОН №686, п.14).
+ * Заліки і диференційовані заліки — однакова норма.
+ */
+export const NORM_CREDIT_HOURS_PER_GROUP = 2
+
+/**
+ * Норми проведення семестрового екзамену (Наказ МОН №686, п.16).
+ */
+export const NORM_EXAM_ORAL_HOURS_PER_STUDENT = 0.33
+export const NORM_EXAM_WRITTEN_HOURS_PER_GROUP = 3
+export const NORM_EXAM_WRITTEN_HOURS_PER_STUDENT = 0.5
+
+/**
+ * Норми перевірки контрольних (модульних) робіт (Наказ МОН №686, п.11–12).
+ * «Робота» = один папір одного студента.
+ */
+export const NORM_CONTROL_WORK_AUDITORY_HOURS = 0.25
+export const NORM_CONTROL_WORK_INDEPENDENT_HOURS = 0.33
+
+/**
+ * Норми керівництва практикою (Наказ МОН №686, п.17–18).
+ * Навчальна практика — на групу/підгрупу за тиждень.
+ * Виробнича/технологічна/переддипломна — на студента за тиждень (керівник від закладу).
+ */
+export const NORM_EDUCATIONAL_PRACTICE_HOURS_PER_WEEK = 18
+export const NORM_PRODUCTION_PRACTICE_HOURS_PER_STUDENT_PER_WEEK = 1
+
+/**
+ * Норми керівництва курсовими роботами/проєктами (Наказ МОН №686, п.13).
+ * «Одна робота» = курсова робота/проєкт одного студента.
+ * Курсовий проєкт: загальнотехнічні дисципліни (GENERAL_COMPETENCY) — менша норма,
+ * фахові — більша.
+ */
+export const NORM_COURSE_WORK_HOURS_PER_STUDENT = 3
+export const NORM_COURSE_PROJECT_GENERAL_HOURS_PER_STUDENT = 3
+export const NORM_COURSE_PROJECT_PROFESSIONAL_HOURS_PER_STUDENT = 4
+
+/**
+ * Норми керівництва дипломними роботами (Наказ МОН №686, п.20).
+ * Керівник+консультанти ділять спільний пул 16 год на студента.
+ * Члени комісії захисту — фіксовано 0.5 год кожному, незалежно від розміру комісії.
+ * Рецензент і представник бази практики НЕ трекаються (завжди зовнішні особи —
+ * Положення про кваліфікаційні роботи ВСП «КПЕФК ЛНТУ», п.3.4: «Рецензент ДП/ДР
+ * не повинен бути співробітником коледжу»).
+ */
+export const NORM_DIPLOMA_SUPERVISION_HOURS_TOTAL = 16
+export const NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER = 0.5
+/** Рекомендований максимум дипломних робіт на одного керівника. */
+export const NORM_MAX_DIPLOMA_WORKS_PER_TEACHER = 8
+
+/**
+ * Норма консультацій перед семестровим контролем (Наказ МОН №686, п.10).
+ * 2 год на групу перед кожним заліком/диф.заліком/екзаменом, незалежно від формату.
+ */
+export const NORM_PRE_CONTROL_CONSULTATION_HOURS_PER_GROUP = 2

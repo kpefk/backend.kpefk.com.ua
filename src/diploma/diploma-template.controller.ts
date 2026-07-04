@@ -2,10 +2,13 @@ import {
   Body,
   Controller,
   Delete,
+  FileTypeValidator,
   Get,
   HttpCode,
   HttpStatus,
+  MaxFileSizeValidator,
   Param,
+  ParseFilePipe,
   Patch,
   Post,
   Put,
@@ -100,7 +103,18 @@ export class DiplomaTemplateController {
   public async uploadFile(
     @Param('id') id: string,
     @Param('kind') kind: TemplateFileKind,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 20 * 1024 * 1024 }),
+          // Лише .docx — шаблон іде напряму в docxtemplater.
+          new FileTypeValidator({
+            fileType: /application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/,
+          }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
   ) {
     await this.service.uploadFile(id, kind === 'diploma' ? 'diploma' : 'addendum', file.buffer)
     return this.service.get(id)

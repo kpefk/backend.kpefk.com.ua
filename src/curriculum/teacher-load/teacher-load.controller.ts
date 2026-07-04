@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -25,6 +26,8 @@ import { UserRole } from '@prisma/client'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
 import { Authorization } from '@/auth/decorators/auth.decorator'
 
+import { DiplomaSupervisionService } from './diploma-supervision.service'
+import { AssignDiplomaSupervisionDto } from './dto/diploma-supervision.dto'
 import {
   ConfirmSubjectAssignmentsDto,
   RevokeSubjectAssignmentsDto,
@@ -51,6 +54,7 @@ export class TeacherLoadController {
   public constructor(
     private readonly teacherLoadService: TeacherLoadService,
     private readonly subjectAssignmentsService: SubjectAssignmentsService,
+    private readonly diplomaSupervisionService: DiplomaSupervisionService,
   ) {}
 
   // ── Teacher self-service ───────────────────────────────────────────────────
@@ -257,5 +261,54 @@ export class TeacherLoadController {
     @Req() req: Request,
   ) {
     return this.subjectAssignmentsService.revoke(dto, userId, req)
+  }
+
+  // ── Diploma supervision (п.20 Наказу №686) ────────────────────────────────
+  // Персональна прив'язка «студент → керівник/консультант», поза DRAFT/CONFIRMED
+  // workflow вище — завжди активне призначення.
+
+  @ApiOperation({
+    summary: 'Студенти + призначені керівники/консультанти дипломних робіт',
+    description:
+      'Повертає студентів груп, прив\'язаних до робочого плану, з поточними ' +
+      'призначеннями на заданий дипломний компонент-семестр і обчисленими годинами ' +
+      '(16 / кількість призначених цьому студенту, Наказ МОН №686 п.20).',
+  })
+  @ApiQuery({ name: 'workingCurriculumId', description: 'UUID робочого плану' })
+  @ApiQuery({ name: 'componentTermId', description: 'UUID дипломного компонент-семестру' })
+  @ApiResponse({ status: 200, description: 'DiplomaStudentRowDto[]' })
+  @Get('diploma-supervision')
+  @HttpCode(HttpStatus.OK)
+  public listDiplomaSupervision(
+    @Query('workingCurriculumId') workingCurriculumId: string,
+    @Query('componentTermId') componentTermId: string,
+  ) {
+    return this.diplomaSupervisionService.listAssignableStudents(workingCurriculumId, componentTermId)
+  }
+
+  @ApiOperation({
+    summary: 'Призначити керівника чи консультанта дипломної роботи',
+    description:
+      '[SOFT WARN] якщо керівник вже має ≥ 8 дипломних робіт цього навчального року ' +
+      '(Наказ МОН №686 п.20).',
+  })
+  @ApiResponse({ status: 201, description: 'AssignDiplomaSupervisionResultDto' })
+  @ApiResponse({ status: 400, description: 'Цей викладач вже призначений цьому студенту' })
+  @Post('diploma-supervision')
+  @HttpCode(HttpStatus.CREATED)
+  public assignDiplomaSupervision(
+    @Body() dto: AssignDiplomaSupervisionDto,
+    @Authorized('id') userId: string,
+  ) {
+    return this.diplomaSupervisionService.assign(dto, userId)
+  }
+
+  @ApiOperation({ summary: 'Зняти призначення керівника/консультанта дипломної роботи' })
+  @ApiParam({ name: 'id', description: 'UUID призначення' })
+  @ApiResponse({ status: 200, description: 'OK' })
+  @Delete('diploma-supervision/:id')
+  @HttpCode(HttpStatus.OK)
+  public unassignDiplomaSupervision(@Param('id') id: string) {
+    return this.diplomaSupervisionService.unassign(id)
   }
 }

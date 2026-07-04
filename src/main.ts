@@ -1,4 +1,4 @@
-import { ClassSerializerInterceptor, ValidationPipe } from '@nestjs/common'
+import { ClassSerializerInterceptor, Logger, ValidationPipe } from '@nestjs/common'
 import { NestFactory, Reflector } from '@nestjs/core'
 import { DecimalSerializerInterceptor } from './libs/common/interceptors/decimal-serializer.interceptor'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config'
 import { RedisStore } from 'connect-redis'
 import cookieParser from 'cookie-parser'
 import session from 'express-session'
+import helmet from 'helmet'
 import { createClient } from 'redis'
 
 import { AppModule } from './app.module'
@@ -23,10 +24,42 @@ import { parseBoolean } from './libs/common/utils/parse-boolean.util'
  * @function bootstrap
  * @returns {Promise<void>} A promise that resolves when the application is started.
  */
+/**
+ * Перевіряє мінімальну довжину секретів підпису кук/сесій (Закон №2297-VI ст. 24 —
+ * технічний захист персональних даних). У production слабкий секрет — фатальна помилка,
+ * у dev — лише попередження, щоб не блокувати локальну розробку.
+ */
+function assertStrongSecrets(configService: ConfigService): void {
+  const MIN_SECRET_LENGTH = 32
+  for (const key of ['SESSION_SECRET', 'COOKIES_SECRET'] as const) {
+    const value = configService.getOrThrow<string>(key)
+    if (value.length >= MIN_SECRET_LENGTH) continue
+    const message = `${key} коротший за ${MIN_SECRET_LENGTH} символів — згенеруйте стійкий секрет (openssl rand -base64 48)`
+    if (IS_DEV_ENV) {
+      new Logger('Bootstrap').warn(message)
+    } else {
+      throw new Error(message)
+    }
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
 
   const configService = app.get(ConfigService)
+
+  assertStrongSecrets(configService)
+
+  // Security headers (helmet). crossOriginResourcePolicy: 'cross-origin' обовʼязковий:
+  // фронтенд живе на іншому origin і вантажить фото/PDF кабінетів напряму через <img> —
+  // дефолтний CORP: same-origin блокував би ці ресурси. Доступ до даних API все одно
+  // обмежений CORS-whitelist'ом + сесійною авторизацією.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      ...(IS_DEV_ENV ? { contentSecurityPolicy: false } : {}),
+    })
+  )
 
   const redis = createClient({
     password: configService.getOrThrow<string>('redis.password'),
@@ -49,7 +82,10 @@ async function bootstrap() {
     new ValidationPipe({
       transform: true,
       // Видаляє з тіла запиту поля, яких немає в DTO — захист від mass-assignment.
-      whitelist: true
+      whitelist: true,
+      // Невідомі поля → 400 замість мовчазного відкидання (Закон №2297-VI ст. 6 —
+      // мінімізація даних; також робить помилки контракту фронтенду видимими).
+      forbidNonWhitelisted: true
     })
   )
 

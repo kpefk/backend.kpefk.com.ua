@@ -195,6 +195,30 @@ export class ClassroomService {
     return this.prismaService.classroom.delete({ where: { id } })
   }
 
+  // ─── Public proxy validation ─────────────────────────────────────────────────
+
+  /**
+   * Перевіряє, що googleFileId є фото одного з кабінетів. Публічний проксі стрімить
+   * файли через сервіс-акаунт Drive — без цієї перевірки він дозволяв би читати
+   * ДОВІЛЬНІ файли, доступні сервіс-акаунту, простим перебором id.
+   */
+  public async assertKnownPhotoFileId(googleFileId: string): Promise<void> {
+    const exists = await this.prismaService.classroom.findFirst({
+      where: { photos: { array_contains: [{ googleFileId }] } },
+      select: { id: true },
+    })
+    if (!exists) throw new NotFoundException('Файл не знайдено.')
+  }
+
+  /** Те саме для паспорта кабінету (PDF). */
+  public async assertKnownPassportFileId(googleFileId: string): Promise<void> {
+    const exists = await this.prismaService.classroom.findFirst({
+      where: { passportGoogleFileId: googleFileId },
+      select: { id: true },
+    })
+    if (!exists) throw new NotFoundException('Файл не знайдено.')
+  }
+
   // ─── Photo operations ─────────────────────────────────────────────────────────
 
   /**

@@ -42,6 +42,21 @@ export class TotalHoursDto {
   independent!: number
   /** Консультації × groupCount */
   examPrep!: number
+  /**
+   * Заліки/екзамени + перевірка контрольних робіт (Наказ МОН №686, п.11/12/14/16).
+   * Дробове значення (наказ визначає норми в частках години) — не множиться на
+   * subgroupCount, оскільки формула вже враховує groupCount/studentCount напряму.
+   */
+  controlAndExam!: number
+  /** Керівництво практикою (Наказ МОН №686, п.17/18). Лише для componentType=PRACTICE. */
+  practiceSupervision!: number
+  /** Керівництво курсовими роботами/проєктами (Наказ МОН №686, п.13). */
+  courseWorkSupervision!: number
+  /**
+   * Комісія захисту дипломних робіт (Наказ МОН №686, п.20). Персональне керівництво
+   * дипломом (16 год/студента) сюди НЕ входить — рахується окремо, per-student.
+   */
+  diplomaCommittee!: number
   /** Сума навчального навантаження по компоненту */
   subtotal!: number
 }

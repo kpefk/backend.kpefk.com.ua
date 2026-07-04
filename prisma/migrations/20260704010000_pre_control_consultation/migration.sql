@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "LessonType" ADD VALUE 'PRE_CONTROL_CONSULTATION';
+

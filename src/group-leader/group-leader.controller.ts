@@ -47,8 +47,11 @@ export class GroupLeaderController {
   @UseGuards(GroupLeaderGuard)
   @Get('group-leader/:groupId/students')
   @HttpCode(HttpStatus.OK)
-  public getGroupStudents(@Param('groupId') groupId: string) {
-    return this.service.getGroupStudents(groupId)
+  public getGroupStudents(
+    @Param('groupId') groupId: string,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.service.getGroupStudents(groupId, req.user.id, req)
   }
 
   @ApiOperation({ summary: 'Профіль студента + контакти батьків' })
@@ -60,8 +63,9 @@ export class GroupLeaderController {
   public getStudent(
     @Param('groupId') groupId: string,
     @Param('studentId') studentId: string,
+    @Req() req: Request & { user: { id: string } },
   ) {
-    return this.service.getStudent(groupId, studentId)
+    return this.service.getStudent(groupId, studentId, req.user.id, req)
   }
 
   @ApiOperation({ summary: 'Оновити контакти батьків (upsert)' })
@@ -85,9 +89,10 @@ export class GroupLeaderController {
   @Get('group-leader/:groupId/export')
   public async exportExcel(
     @Param('groupId') groupId: string,
+    @Req() req: Request & { user: { id: string } },
     @Res() res: Response,
   ) {
-    const buf = await this.service.exportGroupExcel(groupId)
+    const buf = await this.service.exportGroupExcel(groupId, req.user.id, req)
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="group-${groupId}.xlsx"`)
     res.end(buf)
@@ -105,8 +110,11 @@ export class GroupLeaderController {
   )
   @Get('students/:studentId/parent-info')
   @HttpCode(HttpStatus.OK)
-  public getParentInfoAdmin(@Param('studentId') studentId: string) {
-    return this.service.getParentInfoAdmin(studentId)
+  public getParentInfoAdmin(
+    @Param('studentId') studentId: string,
+    @Req() req: Request & { user: { id: string } },
+  ) {
+    return this.service.getParentInfoAdmin(studentId, req.user.id, req)
   }
 
   @ApiOperation({ summary: '(Адмін) Оновити контакти батьків студента' })

@@ -12,12 +12,14 @@ export class TotpService {
   private readonly encryptionKey: Buffer
 
   public constructor(private readonly configService: ConfigService) {
-    // Derive a 32-byte key from SESSION_SECRET (or AUTH_SECRET if provided).
+    // Derive a 32-byte key from AUTH_SECRET (preferred) or SESSION_SECRET.
     // scryptSync ensures the key is always exactly 32 bytes regardless of secret length.
+    // Жодного hardcoded fallback: без секрету застосунок не стартує (getOrThrow) —
+    // інакше TOTP-секрети шифрувалися б відомим публічним ключем.
+    // УВАГА: зміна секрету інвалідовує всі вже зашифровані totpSecret користувачів.
     const secret =
       this.configService.get<string>('AUTH_SECRET') ??
-      this.configService.get<string>('SESSION_SECRET') ??
-      'fallback-32-byte-key-replace-me!'
+      this.configService.getOrThrow<string>('SESSION_SECRET')
     this.encryptionKey = crypto.scryptSync(secret, 'totp-salt-v1', 32)
   }
 

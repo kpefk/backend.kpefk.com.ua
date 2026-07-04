@@ -38,6 +38,9 @@ model User {
   parentInfoUpdates       ParentInfo[]
   auditLogs               AuditLog[]
   recordedLessonSessions  LessonSession[]               @relation("LessonSessionRecordedBy")
+  recordedSemesterGrades  SemesterGrade[]               @relation("SemesterGradeRecordedBy")
+  assignedDiplomaSupervisions DiplomaSupervisionAssignment[]
+  createdSurveys          Survey[]                      @relation("SurveyCreatedBy")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -195,7 +198,16 @@ model Student {
   subgroups         StudentSubgroup[]
   attendanceRecords AttendanceRecord[]
 
+  // Grades domain (back-relations)
+  semesterGrades SemesterGrade[]
+
+  diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
+
   parentInfo ParentInfo?
+
+  // Surveys domain (back-relations)
+  surveyCompletions SurveyCompletion[]
+  surveyAnswers     SurveyAnswer[]
 
   @@map("students")
 }
@@ -221,6 +233,7 @@ model Group {
   schedules                    Schedule[]
   studentSubgroups             StudentSubgroup[]
   lessonSessions               LessonSession[]
+  surveyTargets                SurveyTargetGroup[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -316,6 +329,7 @@ model Teacher {
   workingComponentTerms      WorkingCurriculumComponentTerm[]
   primarySubjectAssignments  TeacherLoadSubjectAssignment[]    @relation("SubjectPrimaryTeacher")
   lessonOverrideAssignments  TeacherLoadLessonAssignment[]     @relation("LessonOverrideTeacher")
+  diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
   qualificationUpgrades      TeacherQualificationUpgrade[]
   scheduleEntries            ScheduleEntry[]
   substitutionReplacements   ScheduleSubstitution[]            @relation("SubstitutionTeacher")
@@ -452,6 +466,28 @@ enum TermControlForm {
   EXAM          // Екзамен
   CREDIT        // Залік
   GRADED_CREDIT // Диференційований залік
+}
+
+/// Шкала оцінювання: ЗСО → 12-бальна, фахові → 5-бальна
+enum GradeScale {
+  TWELVE_POINT // 1–12 (загальноосвітні дисципліни)
+  FIVE_POINT   // 1–5 (фахові дисципліни)
+}
+
+/// Національна текстова оцінка
+enum NationalGrade {
+  EXCELLENT      // Відмінно
+  GOOD           // Добре
+  SATISFACTORY   // Задовільно
+  UNSATISFACTORY // Незадовільно
+  PASSED         // Зараховано (тільки для CREDIT)
+  NOT_PASSED     // Не зараховано (тільки для CREDIT)
+}
+
+/// Статус семестрової оцінки (для перездач)
+enum SemesterGradeStatus {
+  ACTIVE     // Поточна дійсна оцінка
+  SUPERSEDED // Замінена наступною спробою
 }
 
 /// Укрупнена категорія освітнього компонента (для структури плану)
@@ -774,6 +810,8 @@ model CurriculumComponentTerm {
   lessonSessions     LessonSession[]
   /// @deprecated back-relation для ElectiveComponent.curriculumTermId (deprecated)
   electiveComponent  ElectiveComponent?
+  semesterGrades     SemesterGrade[]
+  diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
 
   @@unique([componentId, semesterNumber])
   @@index([componentId])
@@ -906,6 +944,7 @@ model WorkingCurriculum {
 
   componentTerms     WorkingCurriculumComponentTerm[]
   subjectAssignments TeacherLoadSubjectAssignment[]
+  diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
   schedules          Schedule[]
   /// Snapshot-layer: explicit group bindings recorded at assignment time.
   /// For live/current group membership use GroupCurriculumAssignment WHERE versionId AND isActive.
@@ -952,6 +991,26 @@ model WorkingCurriculumComponentTerm {
   /// null = викладач ще не призначений.
   teacherId String?  @map("teacher_id")
   teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  /// Формат семестрового екзамену (Наказ МОН №686 п.16). Обов'язковий лише коли
+  /// componentTerm.controlForm = EXAM — визначає формулу розрахунку годин.
+  examFormat ExamFormat? @map("exam_format")
+
+  /// Кількість контрольних (модульних) робіт за семестр, що виконуються під час
+  /// аудиторних занять (Наказ МОН №686 п.11, 0.25 год/роботу на студента).
+  controlWorksAuditoryCount Int @default(0) @map("control_works_auditory_count")
+  /// Кількість контрольних (модульних) робіт за семестр, що виконуються під час
+  /// самостійної роботи (Наказ МОН №686 п.12, 0.33 год/роботу на студента).
+  controlWorksIndependentCount Int @default(0) @map("control_works_independent_count")
+
+  /// Тривалість практики в тижнях (Наказ МОН №686, п.17/18). Заповнюється лише для
+  /// компонентів componentType=PRACTICE — визначає години керівництва практикою.
+  practiceDurationWeeks Decimal? @map("practice_duration_weeks") @db.Decimal(4, 1)
+
+  /// Кількість членів екзаменаційної/кваліфікаційної комісії захисту дипломних робіт
+  /// (Наказ МОН №686, п.20). Лише для componentType IN (DIPLOMA_PROJECT,
+  /// QUALIFICATION_WORK_DEFENSE). За замовчуванням 3.
+  diplomaCommitteeSize Int @default(3) @map("diploma_committee_size")
 
   @@unique([workingCurriculumId, componentTermId])
   @@index([workingCurriculumId])
@@ -1298,6 +1357,36 @@ enum LessonType {
   SEMINAR      // Семінари            — Наказ МОН №686, п.7
   CONSULTATION // Консультації        — Наказ МОН №686, п.9 (2%/6% від обсягу дисципліни)
   SPRS         // СПРС (внутрішній показник закладу; не окремий вид у Наказі №686)
+
+  /// Проведення семестрового заліку (п.14) або екзамену (п.16). Завжди по групах
+  /// (кожна група складає окремо), без поділу на підгрупи.
+  SEMESTER_CONTROL
+  /// Перевірка контрольних (модульних) робіт — аудиторних (п.11) і самостійних (п.12).
+  CONTROL_WORKS_CHECK
+  /// Керівництво практикою — навчальною (п.17) або виробничою/технологічною/
+  /// переддипломною (п.18). Допускає поділ на підгрупи, як practical/lab.
+  PRACTICE_SUPERVISION
+  /// Керівництво курсовою роботою чи курсовим проєктом (п.13). На студента.
+  COURSE_WORK_SUPERVISION
+  /// Член екзаменаційної/кваліфікаційної комісії захисту дипломної роботи (п.20).
+  /// Per-group, seat-based (кожне "місце" комісії — окремий викладач).
+  DIPLOMA_COMMITTEE
+  /// Консультації перед семестровим контролем — заліком/диф.заліком/екзаменом (п.10).
+  /// Per-group, 2 год незалежно від формату контролю.
+  PRE_CONTROL_CONSULTATION
+}
+
+/// Формат проведення семестрового екзамену (Наказ МОН №686 п.16).
+enum ExamFormat {
+  ORAL    // Усно     — 0.33 год на одного здобувача
+  WRITTEN // Письмово — до 3 год на групу (проведення) + 0.5 год на роботу (перевірка)
+}
+
+/// Роль викладача в персональному керівництві дипломною роботою (Наказ МОН №686, п.20).
+/// На відміну від решти норм — прив'язка «студент → викладач», а не «група → викладач».
+enum SupervisionRole {
+  SUPERVISOR // Керівник
+  CONSULTANT // Консультант
 }
 
 /// Стан запису навантаження
@@ -1398,6 +1487,47 @@ model TeacherLoadLessonAssignment {
   @@index([subjectAssignmentId])
   @@index([overrideTeacherId])
   @@map("teacher_load_lesson_assignments")
+}
+
+/// Персональне призначення керівника/консультанта дипломної роботи (Наказ МОН №686, п.20).
+///
+/// На відміну від решти навантаження (прив'язка до групи), керівництво дипломом —
+/// це прив'язка «студент → викладач»: різні студенти однієї групи часто мають різних
+/// керівників. Години НЕ зберігаються статично — обчислюються на льоту як
+/// 16 / (кількість призначень для studentId+curriculumComponentTermId), щоб не застарівати
+/// при зміні складу керівників/консультантів.
+///
+/// Поза DRAFT/CONFIRMED workflow `TeacherLoadSubjectAssignment` — призначення завжди активне,
+/// подібно до `WorkingCurriculumComponentTerm.teacherId`.
+model DiplomaSupervisionAssignment {
+  id String @id @default(uuid())
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  workingCurriculumId String            @map("working_curriculum_id")
+  workingCurriculum   WorkingCurriculum @relation(fields: [workingCurriculumId], references: [id], onDelete: Cascade)
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+
+  academicYear String @map("academic_year")
+
+  role      SupervisionRole
+  teacherId String          @map("teacher_id")
+  teacher   Teacher         @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+
+  assignedById String @map("assigned_by_id")
+  assignedBy   User   @relation(fields: [assignedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([studentId, curriculumComponentTermId, teacherId])
+  @@index([workingCurriculumId])
+  @@index([teacherId])
+  @@index([studentId])
+  @@map("diploma_supervision_assignments")
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -1605,6 +1735,133 @@ model ScheduleSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("schedule_settings")
+}
+
+/// Глобальна вагова схема для формули підсумкової оцінки (підказка, не жорстке правило).
+/// Singleton — один рядок на весь коледж.
+model GradeWeightSettings {
+  id String @id @default(uuid())
+
+  /// Вага поточної успішності (%), 0-100. currentWeight + examWeight = 100.
+  currentWeight Int @default(60) @map("current_weight")
+  /// Вага екзаменаційної/залікової оцінки (%), 0-100.
+  examWeight    Int @default(40) @map("exam_weight")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("grade_weight_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║              SURVEYS — опитування здобувачів (ВСЗЯО, Ст. 17 №2745-VIII)     ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+enum SurveyStatus {
+  DRAFT  // Чернетка: питання редагуються, студенти не бачать
+  OPEN   // Відкрите: студенти проходять
+  CLOSED // Закрите: лише перегляд результатів
+}
+
+enum SurveyQuestionType {
+  RATING // Шкала 1..5
+  YES_NO // Так / Ні
+  TEXT   // Вільна відповідь
+}
+
+/// Кампанія опитування здобувачів (внутрішня система забезпечення якості освіти).
+model Survey {
+  id String @id @default(uuid())
+
+  title       String
+  description String?
+  status      SurveyStatus @default(DRAFT)
+
+  /// true → відповіді зберігаються БЕЗ привʼязки до студента (лише факт проходження
+  /// в SurveyCompletion). false → SurveyAnswer.studentId заповнюється.
+  isAnonymous Boolean @default(true) @map("is_anonymous")
+
+  opensAt  DateTime? @map("opens_at")
+  closesAt DateTime? @map("closes_at")
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  questions    SurveyQuestion[]
+  targetGroups SurveyTargetGroup[]
+  completions  SurveyCompletion[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@map("surveys")
+}
+
+model SurveyQuestion {
+  id String @id @default(uuid())
+
+  surveyId String @map("survey_id")
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  order    Int
+  text     String
+  type     SurveyQuestionType
+  required Boolean @default(true)
+
+  answers SurveyAnswer[]
+
+  @@unique([surveyId, order])
+  @@map("survey_questions")
+}
+
+/// Цільова група кампанії. Якщо у кампанії немає жодної — адресовано всім студентам.
+model SurveyTargetGroup {
+  id String @id @default(uuid())
+
+  surveyId String @map("survey_id")
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  groupId String @map("group_id")
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([surveyId, groupId])
+  @@map("survey_target_groups")
+}
+
+/// Факт проходження — ЗАВЖДИ привʼязаний до студента (unique блокує повторне
+/// проходження, дає response rate). Відповіді живуть окремо (анонімність).
+model SurveyCompletion {
+  id String @id @default(uuid())
+
+  surveyId String @map("survey_id")
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  @@unique([surveyId, studentId])
+  @@map("survey_completions")
+}
+
+model SurveyAnswer {
+  id String @id @default(uuid())
+
+  questionId String         @map("question_id")
+  question   SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  /// null для анонімних кампаній (Survey.isAnonymous=true)
+  studentId String?  @map("student_id")
+  student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  ratingValue Int?     @map("rating_value") // RATING: 1..5
+  boolValue   Boolean? @map("bool_value")   // YES_NO
+  textValue   String?  @map("text_value")   // TEXT
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([questionId])
+  @@map("survey_answers")
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -2004,4 +2261,43 @@ model DiplomaComponent {
 
   @@index([diplomaId, orderIndex])
   @@map("diploma_components")
+}
+
+// ─── Grades Domain ──────────────────────────────────────────────────────────────
+
+/// Підсумкова семестрова оцінка студента за компонент навчального плану.
+/// Зберігає знімок шкали та форми контролю на момент виставлення.
+/// Перездачі — через ланцюжок attempt (1→2→3), попередня → SUPERSEDED.
+model SemesterGrade {
+  id String @id @default(uuid())
+
+  studentId                 String @map("student_id")
+  curriculumComponentTermId String @map("curriculum_component_term_id")
+  academicYear              String @map("academic_year")
+
+  controlForm   TermControlForm     @map("control_form")
+  gradeScale    GradeScale          @map("grade_scale")
+  finalGrade    Int?                @map("final_grade")
+  nationalGrade NationalGrade       @map("national_grade")
+  attempt       Int                 @default(1)
+  status        SemesterGradeStatus @default(ACTIVE)
+
+  previousAttemptId String?        @map("previous_attempt_id")
+  previousAttempt   SemesterGrade? @relation("RetakeChain", fields: [previousAttemptId], references: [id], onDelete: SetNull)
+  nextAttempts      SemesterGrade[] @relation("RetakeChain")
+
+  recordedById String   @map("recorded_by_id")
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  updatedAt    DateTime @updatedAt      @map("updated_at")
+
+  student                 Student                 @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  curriculumComponentTerm CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+  recordedBy              User                    @relation("SemesterGradeRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, curriculumComponentTermId, attempt])
+  @@index([studentId, academicYear])
+  @@index([curriculumComponentTermId])
+  @@index([recordedById])
+  @@index([status])
+  @@map("semester_grades")
 }

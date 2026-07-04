@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  FileTypeValidator,
   HttpCode,
   HttpStatus,
   MaxFileSizeValidator,
@@ -46,7 +47,13 @@ export class CurriculumImportController {
   public preview(
     @UploadedFile(
       new ParseFilePipe({
-        validators: [new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 })],
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+          // Лише Excel (.xls/.xlsx) — блокує підкидання довільних файлів у парсер.
+          new FileTypeValidator({
+            fileType: /application\/vnd\.(ms-excel|openxmlformats-officedocument\.spreadsheetml\.sheet)/,
+          }),
+        ],
       }),
     )
     file: Express.Multer.File,

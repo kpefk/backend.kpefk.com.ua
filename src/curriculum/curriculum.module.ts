@@ -17,6 +17,7 @@ import { IndividualPlansController } from './individual-plans/individual-plans.c
 import { IndividualPlansService } from './individual-plans/individual-plans.service'
 import { SpecialtiesController } from './specialties/specialties.controller'
 import { SpecialtiesService } from './specialties/specialties.service'
+import { DiplomaSupervisionService } from './teacher-load/diploma-supervision.service'
 import { SubjectAssignmentsService } from './teacher-load/subject-assignments.service'
 import { TeacherLoadController } from './teacher-load/teacher-load.controller'
 import { TeacherLoadService } from './teacher-load/teacher-load.service'
@@ -49,6 +50,7 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     WorkingCurriculaService,
     TeacherLoadService,
     SubjectAssignmentsService,
+    DiplomaSupervisionService,
   ],
   exports: [
     SpecialtiesService,
@@ -59,6 +61,7 @@ import { WorkingCurriculaService } from './working-curricula/working-curricula.s
     WorkingCurriculaService,
     TeacherLoadService,
     SubjectAssignmentsService,
+    DiplomaSupervisionService,
   ],
 })
 export class CurriculumModule {}

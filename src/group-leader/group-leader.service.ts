@@ -66,7 +66,7 @@ export class GroupLeaderService {
 
   // ── Students list ──────────────────────────────────────────────────────────
 
-  public async getGroupStudents(groupId: string) {
+  public async getGroupStudents(groupId: string, userId: string, req: Request) {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       select: {
@@ -81,6 +81,10 @@ export class GroupLeaderService {
     })
 
     if (!group) throw new NotFoundException('Групу не знайдено.')
+
+    // Аудит доступу до персональних даних батьків (Закон №2297-VI ст. 24):
+    // один запис на запит списку, без пер-студентного флуду.
+    await this.auditRead(userId, 'VIEW_GROUP_PARENT_INFO', group.id, 'Group', req)
 
     return {
       id: group.id,
@@ -103,13 +107,15 @@ export class GroupLeaderService {
 
   // ── Single student ─────────────────────────────────────────────────────────
 
-  public async getStudent(groupId: string, studentId: string) {
+  public async getStudent(groupId: string, studentId: string, userId: string, req: Request) {
     const student = await this.prisma.student.findFirst({
       where: { id: studentId, groupId },
       select: STUDENT_SELECT,
     })
 
     if (!student) throw new NotFoundException('Студента не знайдено в цій групі.')
+
+    await this.auditRead(userId, 'READ_PARENT_INFO', studentId, 'Student', req, { groupId })
 
     return {
       id: student.id,
@@ -164,12 +170,15 @@ export class GroupLeaderService {
 
   // ── Admin: parent info without groupId constraint ──────────────────────────
 
-  public async getParentInfoAdmin(studentId: string) {
+  public async getParentInfoAdmin(studentId: string, userId: string, req: Request) {
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
       select: { id: true, parentInfo: true },
     })
     if (!student) throw new NotFoundException('Студента не знайдено.')
+
+    await this.auditRead(userId, 'READ_PARENT_INFO', studentId, 'Student', req, { source: 'admin' })
+
     return student.parentInfo
   }
 
@@ -208,7 +217,7 @@ export class GroupLeaderService {
 
   // ── Excel export ───────────────────────────────────────────────────────────
 
-  public async exportGroupExcel(groupId: string): Promise<Buffer> {
+  public async exportGroupExcel(groupId: string, userId: string, req: Request): Promise<Buffer> {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       select: {
@@ -225,6 +234,9 @@ export class GroupLeaderService {
     })
 
     if (!group) throw new NotFoundException('Групу не знайдено.')
+
+    // Вивантаження файла з ПД батьків — окрема, найчутливіша дія: завжди аудитується.
+    await this.auditRead(userId, 'EXPORT_GROUP_DATA', groupId, 'Group', req)
 
     const rows = group.students.map((s, i) => ({
       '№': i + 1,
@@ -253,5 +265,31 @@ export class GroupLeaderService {
     ]
 
     return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer)
+  }
+
+  // ── Audit helper ───────────────────────────────────────────────────────────
+
+  /**
+   * Аудит ДОСТУПУ до персональних даних батьків (Закон №2297-VI ст. 24 вимагає
+   * фіксувати не лише зміни, а й факти доступу до чутливих ПД).
+   */
+  private async auditRead(
+    userId: string,
+    action: 'READ_PARENT_INFO' | 'VIEW_GROUP_PARENT_INFO' | 'EXPORT_GROUP_DATA',
+    targetId: string,
+    targetType: 'Student' | 'Group',
+    req: Request,
+    metadata?: Record<string, string>,
+  ): Promise<void> {
+    await this.prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        targetId,
+        targetType,
+        ipAddress: req.ip ?? null,
+        metadata: metadata ?? {},
+      },
+    })
   }
 }

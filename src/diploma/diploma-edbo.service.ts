@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 
 import { PrismaService } from '@/prisma/prisma.service'
 import { EdboService } from '@/edbo/core/edbo.service'
@@ -25,7 +26,7 @@ interface EdboPhysPersonDocument {
 }
 
 /** Відповідь ЄДЕБО API `POST /api/accreditationSpecialities/list`. */
-interface EdboAccreditationRecord {
+export interface EdboAccreditationRecord {
   certificateSpecialityId: number
   qualificationGroupId: number
   qualificationGroupName: string | null
@@ -69,6 +70,7 @@ export class DiplomaEdboService {
   public constructor(
     private readonly prisma: PrismaService,
     private readonly edbo: EdboService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -169,12 +171,6 @@ export class DiplomaEdboService {
     skipped: number
     notFound: number
   }> {
-    const universityId = this.configService.getOrThrow<number>('EDEBO_CODE')
-    if (!universityId) {
-      this.logger.warn('EDBO_CODE не встановлено — пропуск синхронізації акредитації')
-      return { updated: 0, skipped: 0, notFound: 0 }
-    }
-
     const templates = await this.prisma.diplomaTemplate.findMany({
       where: { isActive: true },
       select: { id: true, specialtyCode: true, specialtyName: true },
@@ -185,28 +181,10 @@ export class DiplomaEdboService {
       return { updated: 0, skipped: 0, notFound: 0 }
     }
 
-    // Групуємо шаблони за кодом спеціальності для ефективного пошуку.
-    const templatesByCode = new Map<string, typeof templates>()
-    const templatesWithoutCode: typeof templates = []
-    for (const t of templates) {
-      if (t.specialtyCode) {
-        const code = t.specialtyCode.toUpperCase()
-        const arr = templatesByCode.get(code) ?? []
-        arr.push(t)
-        templatesByCode.set(code, arr)
-      } else {
-        templatesWithoutCode.push(t)
-      }
-    }
-
     // Запитуємо всі акредитації закладу (max 500 записів).
-    let allAccreditations: EdboAccreditationRecord[] = []
+    let allAccreditations: EdboAccreditationRecord[]
     try {
-      const result = await this.edbo.post<unknown>(
-        '/api/accreditationSpecialities/list',
-        { UniversityId: universityId, pageSize: 500 },
-      )
-      allAccreditations = Array.isArray(result) ? (result as EdboAccreditationRecord[]) : []
+      allAccreditations = await this.fetchAccreditations()
     } catch (e) {
       this.logger.error(`Помилка отримання акредитацій з ЄДЕБО: ${String(e)}`)
       return { updated: 0, skipped: 0, notFound: templates.length }
@@ -214,60 +192,109 @@ export class DiplomaEdboService {
 
     this.logger.log(`Отримано ${allAccreditations.length} записів акредитації з ЄДЕБО`)
 
-    // Індексуємо за кодом спеціальності (SpecialityId — це числовий код, наприклад 122).
-    const accredBySpecCode = new Map<string, EdboAccreditationRecord>()
-    for (const a of allAccreditations) {
-      if (!a.isCertificateExist) continue // беремо лише діючі сертифікати
-      const specCode = String(a.specialityId)
-      accredBySpecCode.set(specCode, a)
-    }
-
     let updated = 0
-    let skipped = 0
     let notFound = 0
 
-    for (const [code, group] of templatesByCode) {
-      const accred = accredBySpecCode.get(code)
+    for (const t of templates) {
+      const accred = this.findAccreditation(
+        { specialtyCode: t.specialtyCode, specialtyName: t.specialtyName },
+        allAccreditations,
+      )
       if (!accred) {
-        notFound += group.length
-        this.logger.warn(`Акредитацію для спеціальності ${code} не знайдено в ЄДЕБО`)
+        notFound++
+        this.logger.warn(
+          `Акредитацію для шаблону ${t.id} (${t.specialtyCode ?? t.specialtyName ?? '—'}) не знайдено в ЄДЕБО`,
+        )
         continue
       }
 
-      const data: {
-        accrCertSeries: string | null
-        accrCertNumber: string | null
-        accrCertDate: string | null
-        accrCertEndDate: string | null
-        accrProtocolNumber: string | null
-        accrInstitutionName: string | null
-        accrInstitutionNameEn: string | null
-      } = {
-        accrCertSeries: accred.certificateSeries ?? null,
-        accrCertNumber: accred.certificateNumber ?? null,
-        accrCertDate: accred.certificateIssueDate ?? null,
-        accrCertEndDate: accred.certificateEndDate ?? null,
-        accrProtocolNumber: accred.certificateAccrReason ?? null,
-        accrInstitutionName: accred.accreditationInstitutionName ?? null,
-        accrInstitutionNameEn: null, // ЄДЕБО не повертає англійську назву органу акредитації
-      }
-
-      for (const t of group) {
-        await this.prisma.diplomaTemplate.update({
-          where: { id: t.id },
-          data,
-        })
-        updated++
-      }
+      await this.prisma.diplomaTemplate.update({
+        where: { id: t.id },
+        data: {
+          accrCertSeries: accred.certificateSeries ?? null,
+          accrCertNumber: accred.certificateNumber ?? null,
+          accrCertDate: accred.certificateIssueDate ?? null,
+          accrCertEndDate: accred.certificateEndDate ?? null,
+          accrProtocolNumber: accred.certificateAccrReason ?? null,
+          accrInstitutionName: accred.accreditationInstitutionName ?? null,
+          accrInstitutionNameEn: null, // ЄДЕБО не повертає англійську назву органу акредитації
+        },
+      })
+      updated++
     }
 
-    // Шаблони без коду спеціальності — пропускаємо (неможливо матчити).
-    skipped += templatesWithoutCode.length
+    this.logger.log(`Акредитацію оновлено: ${updated} шаблонів, не знайдено: ${notFound}`)
+    return { updated, skipped: 0, notFound }
+  }
 
-    this.logger.log(
-      `Акредитацію оновлено: ${updated} шаблонів, не знайдено: ${notFound}, пропущено (без коду): ${skipped}`,
-    )
-    return { updated, skipped, notFound }
+  /**
+   * Пошук акредитації ЄДЕБО для спеціальності за `search` (код або назва).
+   * Використовується frontend-ом для перегляду наявних сертифікатів закладу.
+   * Без `search` повертає всі діючі сертифікати.
+   */
+  public async lookupAccreditation(search?: string): Promise<EdboAccreditationRecord[]> {
+    const valid = (await this.fetchAccreditations()).filter((a) => a.isCertificateExist)
+
+    const q = search?.trim()
+    if (!q) return valid
+
+    const normalized = this.normalizeSpecName(q)
+    return valid.filter((a) => {
+      const byCode = String(a.specialityId) === q
+      const byName = a.specialityName
+        ? this.normalizeSpecName(a.specialityName).includes(normalized)
+        : false
+      return byCode || byName
+    })
+  }
+
+  /**
+   * Матч акредитації для шаблону: спершу за кодом спеціальності (`specialityId`),
+   * далі — за назвою (з нормалізацією: нижній регістр, без апострофів/зайвих пробілів).
+   * Враховуються лише записи з діючим сертифікатом (`isCertificateExist`).
+   */
+  public findAccreditation(
+    template: { specialtyCode: string | null; specialtyName: string | null },
+    records: EdboAccreditationRecord[],
+  ): EdboAccreditationRecord | undefined {
+    const valid = records.filter((r) => r.isCertificateExist)
+
+    const code = template.specialtyCode?.trim()
+    if (code) {
+      const byCode = valid.find((r) => String(r.specialityId) === code)
+      if (byCode) return byCode
+    }
+
+    const name = template.specialtyName?.trim()
+    if (name) {
+      const target = this.normalizeSpecName(name)
+      return valid.find((r) => {
+        if (!r.specialityName) return false
+        const recName = this.normalizeSpecName(r.specialityName)
+        return recName === target || recName.includes(target) || target.includes(recName)
+      })
+    }
+
+    return undefined
+  }
+
+  /** Запит усіх акредитацій закладу з ЄДЕБО (max 500 записів). */
+  private async fetchAccreditations(): Promise<EdboAccreditationRecord[]> {
+    const universityId = Number(this.configService.getOrThrow<string>('EDEBO_CODE'))
+    const result = await this.edbo.post<unknown>('/api/accreditationSpecialities/list', {
+      UniversityId: universityId,
+      pageSize: 500,
+    })
+    return Array.isArray(result) ? (result as EdboAccreditationRecord[]) : []
+  }
+
+  /** Нормалізація назви спеціальності для нечіткого матчингу (регістр, апострофи, пробіли). */
+  private normalizeSpecName(s: string): string {
+    return s
+      .toLowerCase()
+      .replace(/['’ʼ`‘]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

@@ -10,7 +10,9 @@ import type { Request } from 'express'
 import { randomUUID } from 'crypto'
 
 import { PrismaService } from '@/prisma/prisma.service'
+import { activeStudentWhere } from '@/libs/common/active-student'
 
+import { DiplomaSupervisionService } from './diploma-supervision.service'
 import type {
   ConfirmSubjectAssignmentsDto,
   ConfirmSubjectAssignmentsResultDto,
@@ -24,11 +26,21 @@ import type {
   UpdateSubjectAssignmentDto,
 } from './dto/subject-assignment.dto'
 import {
+  MIN_PRACTICE_SUBGROUP_SIZE,
   MIN_SUBGROUP_SIZE,
+  NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER,
+  NORM_MAX_DIPLOMA_WORKS_PER_TEACHER,
   NORM_MAX_DISCIPLINES,
   NORM_TEACHING_HOURS_PER_RATE,
   teachingHoursLimit,
 } from './teacher-load.constants'
+import {
+  computeControlWorksCheckHours,
+  computeCourseWorkSupervisionHours,
+  computePracticeSupervisionHours,
+  computePreControlConsultationHours,
+  computeSemesterControlHours,
+} from './teacher-load.formulas'
 
 // ─── Prisma includes ──────────────────────────────────────────────────────────
 
@@ -81,7 +93,10 @@ type TeacherSelectResult = Prisma.TeacherGetPayload<{ select: typeof TEACHER_SEL
 export class SubjectAssignmentsService {
   private readonly logger = new Logger(SubjectAssignmentsService.name)
 
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly prisma: PrismaService,
+    private readonly diplomaSupervisionService: DiplomaSupervisionService,
+  ) {}
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -108,7 +123,24 @@ export class SubjectAssignmentsService {
       where: { id: workingCurriculumId },
       include: {
         componentTerms: {
-          include: { componentTerm: { select: { id: true, subgroupCount: true } } },
+          include: {
+            componentTerm: {
+              select: {
+                id: true,
+                subgroupCount: true,
+                controlForm: true,
+                hasCourseWork: true,
+                hasCourseProject: true,
+                component: {
+                  select: {
+                    componentType: true,
+                    practiceType: true,
+                    section: { select: { sectionType: true } },
+                  },
+                },
+              },
+            },
+          },
           orderBy: [
             { componentTerm: { component: { section: { orderIndex: 'asc' } } } },
             { componentTerm: { component: { orderIndex: 'asc' } } },
@@ -124,6 +156,17 @@ export class SubjectAssignmentsService {
       select: { groupId: true },
     })
     const groupIds = activeGroups.map((g) => g.groupId)
+
+    // Кількість студентів по кожній групі — для заліків/екзаменів/контрольних (п.11/12/14/16),
+    // де норма визначається на студента, а не на групу як ціле.
+    const studentCounts = groupIds.length > 0
+      ? await this.prisma.student.groupBy({
+          by: ['groupId'],
+          where: { groupId: { in: groupIds }, ...activeStudentWhere() },
+          _count: { id: true },
+        })
+      : []
+    const studentCountByGroup = new Map(studentCounts.map((s) => [s.groupId, s._count.id]))
 
     // Зберігаємо призначення з існуючих DRAFT
     const existingSubjects = await this.prisma.teacherLoadSubjectAssignment.findMany({
@@ -268,6 +311,172 @@ export class SubjectAssignmentsService {
           for (const [type, hours] of perGroupTypes) {
             pushLessons(saId, sk, type, hours, subgroupCount)
           }
+        }
+      }
+
+      // ── Per-group subjects: заліки/екзамени/контрольні (п.11/12/14/16) ────────
+      // Завжди по групах (кожна група проходить контроль окремо), без поділу на
+      // підгрупи. Округлюємо до цілої години — LessonAssignment.hours є Int,
+      // дробові норми Наказу №686 (0.25/0.33/0.5) округлюються для облікового наказу.
+      for (const gid of groupIds) {
+        const studentCount = studentCountByGroup.get(gid) ?? 0
+        const semesterControlHours = Math.round(
+          computeSemesterControlHours(wct.componentTerm.controlForm, wct.examFormat, 1, studentCount),
+        )
+        const controlWorksHours = Math.round(
+          computeControlWorksCheckHours(
+            wct.controlWorksAuditoryCount,
+            wct.controlWorksIndependentCount,
+            studentCount,
+          ),
+        )
+        const preControlConsultationHours = Math.round(
+          computePreControlConsultationHours(wct.componentTerm.controlForm, 1),
+        )
+
+        if (semesterControlHours === 0 && controlWorksHours === 0 && preControlConsultationHours === 0) continue
+
+        const sk = `${termId}:${gid}`
+        const saId = randomUUID()
+        subjectRows.push({
+          id:                        saId,
+          workingCurriculumId,
+          curriculumComponentTermId: termId,
+          groupId:                   gid,
+          academicYear:              year,
+          primaryTeacherId:          savedPrimary.get(sk) ?? null,
+          assignedById:              userId,
+          status:                    'DRAFT',
+        })
+        if (semesterControlHours > 0) {
+          lessonRows.push({
+            id:                  randomUUID(),
+            subjectAssignmentId: saId,
+            lessonType:          'SEMESTER_CONTROL',
+            subgroupNumber:      null,
+            hours:               semesterControlHours,
+            overrideTeacherId:   savedOverride.get(`${sk}:SEMESTER_CONTROL:null`) ?? null,
+          })
+        }
+        if (controlWorksHours > 0) {
+          lessonRows.push({
+            id:                  randomUUID(),
+            subjectAssignmentId: saId,
+            lessonType:          'CONTROL_WORKS_CHECK',
+            subgroupNumber:      null,
+            hours:               controlWorksHours,
+            overrideTeacherId:   savedOverride.get(`${sk}:CONTROL_WORKS_CHECK:null`) ?? null,
+          })
+        }
+        if (preControlConsultationHours > 0) {
+          lessonRows.push({
+            id:                  randomUUID(),
+            subjectAssignmentId: saId,
+            lessonType:          'PRE_CONTROL_CONSULTATION',
+            subgroupNumber:      null,
+            hours:               preControlConsultationHours,
+            overrideTeacherId:   savedOverride.get(`${sk}:PRE_CONTROL_CONSULTATION:null`) ?? null,
+          })
+        }
+      }
+
+      // ── Per-group subjects: керівництво практикою (п.17/18) ───────────────────
+      // Завжди по групах, з підтримкою поділу на підгрупи (18 год/тижд на кожну
+      // підгрупу для навчальної практики — pushLessons() розбиває автоматично).
+      const { componentType, practiceType } = wct.componentTerm.component
+      if (componentType === 'PRACTICE') {
+        for (const gid of groupIds) {
+          const studentCount = studentCountByGroup.get(gid) ?? 0
+          const practiceHours = Math.round(
+            computePracticeSupervisionHours(
+              componentType,
+              practiceType,
+              wct.practiceDurationWeeks?.toNumber() ?? null,
+              studentCount,
+            ),
+          )
+          if (practiceHours === 0) continue
+
+          const sk = `${termId}:${gid}`
+          const saId = randomUUID()
+          subjectRows.push({
+            id:                        saId,
+            workingCurriculumId,
+            curriculumComponentTermId: termId,
+            groupId:                   gid,
+            academicYear:              year,
+            primaryTeacherId:          savedPrimary.get(sk) ?? null,
+            assignedById:              userId,
+            status:                    'DRAFT',
+          })
+          pushLessons(saId, sk, 'PRACTICE_SUPERVISION', practiceHours, subgroupCount)
+        }
+      }
+
+      // ── Per-group subjects: керівництво курсовими роботами/проєктами (п.13) ──
+      // На студента, без поділу на підгрупи — курсовою керує один викладач
+      // незалежно від того, чи ділиться група на практичні підгрупи.
+      const { hasCourseWork, hasCourseProject } = wct.componentTerm
+      if (hasCourseWork || hasCourseProject) {
+        for (const gid of groupIds) {
+          const studentCount = studentCountByGroup.get(gid) ?? 0
+          const courseWorkHours = Math.round(
+            computeCourseWorkSupervisionHours(
+              hasCourseWork,
+              hasCourseProject,
+              wct.componentTerm.component.section.sectionType,
+              studentCount,
+            ),
+          )
+          if (courseWorkHours === 0) continue
+
+          const sk = `${termId}:${gid}`
+          const saId = randomUUID()
+          subjectRows.push({
+            id:                        saId,
+            workingCurriculumId,
+            curriculumComponentTermId: termId,
+            groupId:                   gid,
+            academicYear:              year,
+            primaryTeacherId:          savedPrimary.get(sk) ?? null,
+            assignedById:              userId,
+            status:                    'DRAFT',
+          })
+          lessonRows.push({
+            id:                  randomUUID(),
+            subjectAssignmentId: saId,
+            lessonType:          'COURSE_WORK_SUPERVISION',
+            subgroupNumber:      null,
+            hours:               courseWorkHours,
+            overrideTeacherId:   savedOverride.get(`${sk}:COURSE_WORK_SUPERVISION:null`) ?? null,
+          })
+        }
+      }
+
+      // ── Per-group subjects: комісія захисту дипломних робіт (п.20) ────────────
+      // Seat-based через pushLessons() — кожне "місце" комісії незалежно
+      // призначається через існуючий UI (LessonTeacherSelectCell). Персональне
+      // керівництво дипломом сюди НЕ входить — воно живе в DiplomaSupervisionAssignment,
+      // поза цим DRAFT/CONFIRMED workflow.
+      if (componentType === 'DIPLOMA_PROJECT' || componentType === 'QUALIFICATION_WORK_DEFENSE') {
+        for (const gid of groupIds) {
+          const studentCount = studentCountByGroup.get(gid) ?? 0
+          const committeeHours = Math.round(NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER * studentCount)
+          if (committeeHours === 0) continue
+
+          const sk = `${termId}:${gid}`
+          const saId = randomUUID()
+          subjectRows.push({
+            id:                        saId,
+            workingCurriculumId,
+            curriculumComponentTermId: termId,
+            groupId:                   gid,
+            academicYear:              year,
+            primaryTeacherId:          savedPrimary.get(sk) ?? null,
+            assignedById:              userId,
+            status:                    'DRAFT',
+          })
+          pushLessons(saId, sk, 'DIPLOMA_COMMITTEE', committeeHours, wct.diplomaCommitteeSize)
         }
       }
     }
@@ -430,10 +639,13 @@ export class SubjectAssignmentsService {
       const perSubgroup = subgroupCount > 0
         ? Math.floor(studentCount / subgroupCount)
         : studentCount
-      if (perSubgroup < MIN_SUBGROUP_SIZE) {
+      const isPractice = lesson.lessonType === 'PRACTICE_SUPERVISION'
+      const minSize = isPractice ? MIN_PRACTICE_SUBGROUP_SIZE : MIN_SUBGROUP_SIZE
+      const normRef = isPractice ? 'п.17' : 'п.5'
+      if (perSubgroup < minSize) {
         warnings.push(
-          `У підгрупі ≈${perSubgroup} студентів — менше мінімуму ${MIN_SUBGROUP_SIZE} осіб ` +
-          `(Наказ МОН №686 п.5). Поділ допустимий лише за наявності педагогічного обґрунтування.`,
+          `У підгрупі ≈${perSubgroup} студентів — менше мінімуму ${minSize} осіб ` +
+          `(Наказ МОН №686 ${normRef}). Поділ допустимий лише за наявності педагогічного обґрунтування.`,
         )
       }
     }
@@ -559,6 +771,26 @@ export class SubjectAssignmentsService {
         // Видаляємо щоб не дублювати попередження для одного викладача
         disciplinesByTeacher.delete(sa.primaryTeacherId)
       }
+    }
+
+    // D2 [SOFT WARN]: керівник веде більше NORM_MAX_DIPLOMA_WORKS_PER_TEACHER дипломних
+    // робіт (Наказ МОН №686 п.20: "за одним керівником закріплюється до 8 робіт").
+    const supervisorCounts = await this.prisma.diplomaSupervisionAssignment.groupBy({
+      by: ['teacherId'],
+      where: { academicYear: wc.academicYear, role: 'SUPERVISOR' },
+      _count: { id: true },
+    })
+    for (const { teacherId, _count } of supervisorCounts) {
+      if (_count.id <= NORM_MAX_DIPLOMA_WORKS_PER_TEACHER) continue
+      const teacher = await this.prisma.teacher.findUnique({
+        where: { id: teacherId },
+        select: { lastName: true, firstName: true },
+      })
+      const name = teacher ? `${teacher.lastName} ${teacher.firstName}` : teacherId
+      warnings.push(
+        `Керівник ${name} веде ${_count.id} дипломних робіт (рекомендований максимум — ` +
+        `${NORM_MAX_DIPLOMA_WORKS_PER_TEACHER}, Наказ МОН №686 п.20).`,
+      )
     }
 
     const result = await this.prisma.teacherLoadSubjectAssignment.updateMany({
@@ -704,6 +936,17 @@ export class SubjectAssignmentsService {
         lesson.overrideTeacherId ?? lesson.subjectAssignment.primaryTeacherId
       if (effectiveId === null) continue
       hoursByTeacher.set(effectiveId, (hoursByTeacher.get(effectiveId) ?? 0) + lesson.hours)
+    }
+
+    // Персональне керівництво дипломами (Наказ МОН №686, п.20) — окрема таблиця,
+    // поза TeacherLoadLessonAssignment, але враховується в тому самому 720-годинному
+    // ліміті (Ст. 60 №2745-VIII охоплює повне навчальне навантаження за рік).
+    // Без явного teacherIds-фільтра — щоб не пропустити викладача, який має ЛИШЕ
+    // дипломне керівництво, без жодного звичайного заняття.
+    const diplomaHoursByTeacher = await this.diplomaSupervisionService
+      .getTeachersDiplomaHoursByAcademicYear(academicYear)
+    for (const [teacherId, diplomaHours] of diplomaHoursByTeacher) {
+      hoursByTeacher.set(teacherId, (hoursByTeacher.get(teacherId) ?? 0) + diplomaHours)
     }
 
     if (hoursByTeacher.size === 0) return

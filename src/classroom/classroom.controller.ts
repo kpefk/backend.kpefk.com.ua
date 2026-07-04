@@ -13,9 +13,11 @@ import {
   Post,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 import { Response } from 'express'
 
@@ -84,11 +86,16 @@ export class ClassroomController {
   @ApiParam({ name: 'googleFileId', description: 'ID файлу на Google Drive' })
   @ApiResponse({ status: 200, description: 'Зображення' })
   @ApiResponse({ status: 404, description: 'Файл не знайдено' })
+  // Публічний роут (щоб <img> вантажились без креденшелів) → rate-limit проти
+  // перебору id; перед стрімом перевіряємо, що файл справді належить кабінету.
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   @Get('photos/:googleFileId')
   public async proxyPhoto(
     @Param('googleFileId') googleFileId: string,
     @Res() res: Response,
   ): Promise<void> {
+    await this.classroomService.assertKnownPhotoFileId(googleFileId)
     const { stream, mimeType } = await this.googleDriveService.streamFile(googleFileId)
     res.setHeader('Content-Type', mimeType)
     res.setHeader('Cache-Control', 'public, max-age=86400') // кешуємо на 24год
@@ -258,11 +265,14 @@ export class ClassroomController {
    */
   @ApiOperation({ summary: 'Проксі паспорту кабінету (PDF)' })
   @ApiParam({ name: 'googleFileId', description: 'ID файлу на Google Drive' })
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Get('passport/:googleFileId')
   public async proxyPassport(
     @Param('googleFileId') googleFileId: string,
     @Res() res: Response,
   ): Promise<void> {
+    await this.classroomService.assertKnownPassportFileId(googleFileId)
     const { stream, mimeType } = await this.googleDriveService.streamFile(googleFileId)
     res.setHeader('Content-Type', mimeType)
     res.setHeader('Cache-Control', 'public, max-age=86400')

@@ -97,7 +97,9 @@ export class WorkingCurriculaService {
           include: {
             componentTerm: {
               include: {
-                component: { select: { id: true, code: true, name: true, componentType: true } },
+                component: {
+                  select: { id: true, code: true, name: true, componentType: true, practiceType: true },
+                },
               },
             },
             teacher: {
@@ -381,6 +383,9 @@ export class WorkingCurriculaService {
       seminarHours: dto.seminarHours ?? term.seminarHours,
       independentHours: dto.independentHours ?? term.independentHours,
       consultationHours: dto.consultationHours ?? term.consultationHours,
+      controlWorksAuditoryCount: dto.controlWorksAuditoryCount ?? term.controlWorksAuditoryCount,
+      controlWorksIndependentCount: dto.controlWorksIndependentCount ?? term.controlWorksIndependentCount,
+      diplomaCommitteeSize: dto.diplomaCommitteeSize ?? term.diplomaCommitteeSize,
     }
 
     // SOFT WARN: Наказ МОН №686 п.9 — ліміт консультацій відносно загального обсягу
@@ -403,11 +408,17 @@ export class WorkingCurriculaService {
         ...(dto.weeklyPracticalHours !== undefined && { weeklyPracticalHours: dto.weeklyPracticalHours }),
         // teacherId: undefined → не змінювати; null → зняти призначення; string → призначити
         ...(dto.teacherId !== undefined && { teacherId: dto.teacherId }),
+        // examFormat: undefined → не змінювати; null → очистити; ExamFormat → встановити
+        ...(dto.examFormat !== undefined && { examFormat: dto.examFormat }),
+        // practiceDurationWeeks: undefined → не змінювати; null → очистити; number → встановити
+        ...(dto.practiceDurationWeeks !== undefined && { practiceDurationWeeks: dto.practiceDurationWeeks }),
       },
       include: {
         componentTerm: {
           include: {
-            component: { select: { id: true, code: true, name: true, componentType: true } },
+            component: {
+              select: { id: true, code: true, name: true, componentType: true, practiceType: true },
+            },
           },
         },
         teacher: {

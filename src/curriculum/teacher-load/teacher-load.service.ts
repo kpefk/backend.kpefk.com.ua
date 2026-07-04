@@ -1,8 +1,16 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common'
-import type { LoadDistributionMode } from '@prisma/client'
+import type {
+  ComponentType,
+  CurriculumSectionType,
+  ExamFormat,
+  LoadDistributionMode,
+  PracticeType,
+  TermControlForm,
+} from '@prisma/client'
 
 import { PrismaService } from '@/prisma/prisma.service'
 
+import { DiplomaSupervisionService } from './diploma-supervision.service'
 import type {
   AllTeachersLoadDto,
   HoursPerGroupDto,
@@ -15,10 +23,18 @@ import type {
   TotalHoursDto,
 } from './dto/teacher-load.dto'
 import {
+  NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER,
   NORM_MAX_DISCIPLINES,
   NORM_TEACHING_HOURS_PER_RATE,
   teachingHoursLimit,
 } from './teacher-load.constants'
+import {
+  computeControlWorksCheckHours,
+  computeCourseWorkSupervisionHours,
+  computePracticeSupervisionHours,
+  computePreControlConsultationHours,
+  computeSemesterControlHours,
+} from './teacher-load.formulas'
 
 // ─── Internal types ───────────────────────────────────────────────────────────
 
@@ -53,13 +69,36 @@ interface LoadRow {
   labMode: LoadDistributionMode
   /** Кількість підгруп (≥2 → години діляться/множаться). */
   subgroupCount: number
+  /** Форма підсумкового контролю (для розрахунку заліку/екзамену, п.14/16). */
+  controlForm: TermControlForm | null
+  /** Формат екзамену — усно/письмово (п.16). */
+  examFormat: ExamFormat | null
+  /** Кількість контрольних робіт: аудиторних (п.11) / самостійних (п.12). */
+  controlWorksAuditoryCount: number
+  controlWorksIndependentCount: number
+  /** Тип освітнього компонента (для розрахунку керівництва практикою, п.17/18). */
+  componentType: ComponentType
+  /** Вид практики (лише для componentType=PRACTICE). */
+  practiceType: PracticeType | null
+  /** Тривалість практики в тижнях (лише для componentType=PRACTICE). */
+  practiceDurationWeeks: number | null
+  /** Чи має термін курсову роботу/проєкт (п.13). */
+  hasCourseWork: boolean
+  hasCourseProject: boolean
+  /** Тип секції плану (для ставки курсового проєкту: загальнотехн./фахова, п.13). */
+  sectionType: CurriculumSectionType
+  /** Кількість членів комісії захисту дипломних робіт (п.20, лише DIPLOMA_PROJECT/QUALIFICATION_WORK_DEFENSE). */
+  diplomaCommitteeSize: number
 }
 
 @Injectable()
 export class TeacherLoadService {
   private readonly logger = new Logger(TeacherLoadService.name)
 
-  public constructor(private readonly prisma: PrismaService) {}
+  public constructor(
+    private readonly prisma: PrismaService,
+    private readonly diplomaSupervisionService: DiplomaSupervisionService,
+  ) {}
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -114,8 +153,10 @@ export class TeacherLoadService {
                     id: true,
                     code: true,
                     name: true,
-                    section: { select: { orderIndex: true } },
+                    section: { select: { orderIndex: true, sectionType: true } },
                     orderIndex: true,
+                    componentType: true,
+                    practiceType: true,
                   },
                 },
               },
@@ -182,16 +223,66 @@ export class TeacherLoadService {
         practiceMode: wct.practiceMode,
         labMode: wct.labMode,
         subgroupCount: wct.subgroupCount ?? wct.componentTerm.subgroupCount ?? 1,
+        controlForm: wct.componentTerm.controlForm,
+        examFormat: wct.examFormat,
+        controlWorksAuditoryCount: wct.controlWorksAuditoryCount,
+        controlWorksIndependentCount: wct.controlWorksIndependentCount,
+        componentType: wct.componentTerm.component.componentType,
+        practiceType: wct.componentTerm.component.practiceType,
+        practiceDurationWeeks: wct.practiceDurationWeeks?.toNumber() ?? null,
+        hasCourseWork: wct.componentTerm.hasCourseWork,
+        hasCourseProject: wct.componentTerm.hasCourseProject,
+        sectionType: wct.componentTerm.component.section.sectionType,
+        diplomaCommitteeSize: wct.diplomaCommitteeSize,
       }
     })
 
     const entries = this.groupAndAggregate(rows)
+    await this.applyDiplomaSupervisionHours(entries, id)
 
     return {
       workingCurriculumId: id,
       academicYear: wc.academicYear,
       generatedAt: new Date().toISOString(),
       teachers: entries,
+    }
+  }
+
+  /**
+   * Додає персональне керівництво дипломними роботами (Наказ МОН №686, п.20) до
+   * підсумку кожного викладача. Масштабується на рівні одного робочого плану
+   * (не всього навчального року), щоб уникнути подвійного підрахунку при агрегації
+   * по кількох планах (`generateAllTeachersSummary`, `generateByTeacher`).
+   */
+  private async applyDiplomaSupervisionHours(
+    entries: TeacherLoadEntryDto[],
+    workingCurriculumId: string,
+  ): Promise<void> {
+    const teacherIds = entries
+      .map((e) => e.teacher?.id)
+      .filter((id): id is string => id !== undefined)
+    if (teacherIds.length === 0) return
+
+    const diplomaHoursByTeacher = await this.diplomaSupervisionService
+      .getTeachersDiplomaHoursByWorkingCurriculum(teacherIds, workingCurriculumId)
+    if (diplomaHoursByTeacher.size === 0) return
+
+    for (const entry of entries) {
+      if (entry.teacher === null) continue
+      const diplomaHours = diplomaHoursByTeacher.get(entry.teacher.id) ?? 0
+      if (diplomaHours === 0) continue
+
+      const wasExceeded = entry.summary.teachingHoursExceeded
+      entry.summary.totalTeachingHours += diplomaHours
+      entry.summary.teachingHoursExceeded =
+        entry.summary.totalTeachingHours > entry.summary.teachingHoursLimit
+      if (entry.summary.teachingHoursExceeded && !wasExceeded) {
+        entry.summary.warnings.push(
+          `Перевищено ліміт навчального навантаження ${entry.summary.teachingHoursLimit} год/рік ` +
+          `з урахуванням керівництва дипломними роботами (Наказ МОН №686 п.20; фактично: ` +
+          `${Math.round(entry.summary.totalTeachingHours)} год). Ст. 60 Закону №2745-VIII.`,
+        )
+      }
     }
   }
 
@@ -440,7 +531,10 @@ export class TeacherLoadService {
   private buildComponent(row: LoadRow): LoadComponentDto {
     const {
       lecture, practical, lab, seminar, independent, examPrep,
-      groupCount, practiceMode, labMode, subgroupCount,
+      groupCount, studentCount, practiceMode, labMode, subgroupCount,
+      controlForm, examFormat, controlWorksAuditoryCount, controlWorksIndependentCount,
+      componentType, practiceType, practiceDurationWeeks,
+      hasCourseWork, hasCourseProject, sectionType, diplomaCommitteeSize,
     } = row
     const practicalLab = practical + lab
 
@@ -465,13 +559,47 @@ export class TeacherLoadService {
     const independentTotal = independent * sub
     const examPrepTotal = examPrep * sub
 
+    // Заліки/екзамени/контрольні/консультації перед контролем (Наказ МОН №686,
+    // п.10/11/12/14/16) — не множаться на підгрупи, формула вже враховує
+    // groupCount/studentCount напряму.
+    const controlAndExam =
+      computeSemesterControlHours(controlForm, examFormat, groupCount, studentCount) +
+      computeControlWorksCheckHours(controlWorksAuditoryCount, controlWorksIndependentCount, studentCount) +
+      computePreControlConsultationHours(controlForm, groupCount)
+
+    // Керівництво практикою (Наказ МОН №686, п.17/18) — навчальна практика множиться на
+    // підгрупи (як і practical/lab), виробнича вже враховує studentCount напряму.
+    const practiceSupervision = computePracticeSupervisionHours(
+      componentType, practiceType, practiceDurationWeeks, studentCount, subgroupCount,
+    )
+
+    // Керівництво курсовими роботами/проєктами (Наказ МОН №686, п.13) — на студента,
+    // без множення на підгрупи (керує один викладач незалежно від поділу групи).
+    const courseWorkSupervision = computeCourseWorkSupervisionHours(
+      hasCourseWork, hasCourseProject, sectionType, studentCount,
+    )
+
+    // Комісія захисту дипломних робіт (Наказ МОН №686, п.20) — 0.5 год кожному члену
+    // комісії на кожного студента; лише для дипломних/кваліфікаційних компонентів.
+    // Персональне керівництво дипломом (16 год/студента) сюди НЕ входить — воно
+    // прив'язане до конкретного студента, а не до групи, і рахується окремо через
+    // DiplomaSupervisionService (додається до підсумку викладача в buildSummary()).
+    const isDiplomaComponent = componentType === 'DIPLOMA_PROJECT' || componentType === 'QUALIFICATION_WORK_DEFENSE'
+    const diplomaCommittee = isDiplomaComponent
+      ? NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER * diplomaCommitteeSize * studentCount
+      : 0
+
     const totalHours: TotalHoursDto = {
       lecture: lectureTotal,            // ×subgroups
       practicalLab: practicalLabTotal,  // ×groupCount (PER_GROUP) ×subgroups
       seminar: seminarTotal,            // ×subgroups
       independent: independentTotal,    // ×subgroups
       examPrep: examPrepTotal,          // ×subgroups
-      subtotal: lectureTotal + practicalLabTotal + seminarTotal + independentTotal + examPrepTotal,
+      controlAndExam,
+      practiceSupervision,
+      courseWorkSupervision,
+      diplomaCommittee,
+      subtotal: lectureTotal + practicalLabTotal + seminarTotal + independentTotal + examPrepTotal + controlAndExam + practiceSupervision + courseWorkSupervision + diplomaCommittee,
     }
 
     return {
@@ -496,7 +624,11 @@ export class TeacherLoadService {
         c.totalHours.practicalLab +
         c.totalHours.seminar +
         c.totalHours.independent +
-        c.totalHours.examPrep,
+        c.totalHours.examPrep +
+        c.totalHours.controlAndExam +
+        c.totalHours.practiceSupervision +
+        c.totalHours.courseWorkSupervision +
+        c.totalHours.diplomaCommittee,
       0,
     )
 

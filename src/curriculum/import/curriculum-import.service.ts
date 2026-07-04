@@ -50,7 +50,16 @@ function mapSectionType(name: string, part: CurriculumPart): CurriculumSectionTy
   return CurriculumSectionType.PROFESSIONAL_COMPETENCY
 }
 
-/** Назва компонента → тип компонента схеми. */
+/**
+ * Назва компонента → тип компонента схеми.
+ *
+ * STATE_EXAM свідомо не визначається евристикою: КПЕФК — заклад ФПО, де
+ * ДПА не проводиться (вона складається по завершенню 9 класу, до вступу),
+ * а «зно»/«нмт» в назві зазвичай означає підготовчий факультатив, не сам
+ * державний іспit. Раніше `n.includes('державн')` хибно ловив підрядок
+ * "державн" у слові «державності» («Історія державності і культура»).
+ * STATE_EXAM лишається доступним у схемі для ручного вибору в UI.
+ */
 function mapComponentType(name: string): ComponentType {
   const n = name.toLowerCase()
   if (n.includes('практика')) return ComponentType.PRACTICE
@@ -58,8 +67,6 @@ function mapComponentType(name: string): ComponentType {
   if (n.includes('захист кваліфікаційної')) return ComponentType.QUALIFICATION_WORK_DEFENSE
   if (n.includes('кваліфікаційн') && (n.includes('іспит') || n.includes('екзамен')))
     return ComponentType.QUALIFICATION_EXAM
-  if (n.includes('дпа') || n.includes('зно') || n.includes('нмт') || n.includes('державн'))
-    return ComponentType.STATE_EXAM
   return ComponentType.DISCIPLINE
 }
 

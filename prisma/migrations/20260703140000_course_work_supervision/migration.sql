@@ -1,0 +1,3 @@
+-- AlterEnum
+ALTER TYPE "LessonType" ADD VALUE 'COURSE_WORK_SUPERVISION';
+
