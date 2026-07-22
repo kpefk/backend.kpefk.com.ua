@@ -1,15 +1,15 @@
-import { IsOptional, IsBoolean, IsString, IsUrl } from 'class-validator'
+import { IsBoolean, IsOptional, IsString, IsUrl } from 'class-validator'
 
 export class UpdateOfferingDto {
-  @IsOptional()
-  @IsUrl()
-  syllabusUrl?: string
+	@IsOptional()
+	@IsUrl()
+	syllabusUrl?: string
 
-  @IsOptional()
-  @IsBoolean()
-  isHigherEd?: boolean
+	@IsOptional()
+	@IsBoolean()
+	isHigherEd?: boolean
 
-  @IsOptional()
-  @IsString()
-  description?: string
+	@IsOptional()
+	@IsString()
+	description?: string
 }

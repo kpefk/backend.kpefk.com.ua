@@ -24,26 +24,26 @@ export const SLOTS_PER_DAY = 4
  * Порожній масив = підходить будь-яка аудиторія (CONSULTATION, SPRS).
  */
 export const LESSON_CLASSROOM_TYPES: Record<string, readonly string[]> = {
-  LECTURE: ['LECTURE', 'OTHER'],
-  PRACTICE: ['PRACTICE', 'LECTURE', 'OTHER'],
-  SEMINAR: ['PRACTICE', 'LECTURE', 'OTHER'],
-  LAB: ['LAB', 'COMPUTER'],
-  CONSULTATION: [],
-  SPRS: [],
+	LECTURE: ['LECTURE', 'OTHER'],
+	PRACTICE: ['PRACTICE', 'LECTURE', 'OTHER'],
+	SEMINAR: ['PRACTICE', 'LECTURE', 'OTHER'],
+	LAB: ['LAB', 'COMPUTER'],
+	CONSULTATION: [],
+	SPRS: []
 }
 
 /** Розклад дзвінків: номер пари → час початку/кінця. */
 export interface BellTime {
-  slot: number
-  start: string
-  end: string
+	slot: number
+	start: string
+	end: string
 }
 
 export const BELL_TIMES: readonly BellTime[] = [
-  { slot: 1, start: '08:30', end: '09:50' },
-  { slot: 2, start: '10:00', end: '11:20' },
-  { slot: 3, start: '11:50', end: '13:10' },
-  { slot: 4, start: '13:20', end: '14:40' },
+	{ slot: 1, start: '08:30', end: '09:50' },
+	{ slot: 2, start: '10:00', end: '11:20' },
+	{ slot: 3, start: '11:50', end: '13:10' },
+	{ slot: 4, start: '13:20', end: '14:40' }
 ]
 
 /** Виховна година (5-й слот, раз на тиждень). */
@@ -58,10 +58,10 @@ export const DEFAULT_TEACHING_WEEKS = 16
 
 /** Назви видів занять (для попереджень/логів). */
 export const LESSON_TYPE_LABELS: Record<string, string> = {
-  LECTURE: 'Лекція',
-  PRACTICE: 'Практичне',
-  LAB: 'Лабораторна',
-  SEMINAR: 'Семінар',
-  CONSULTATION: 'Консультація',
-  SPRS: 'СПРС',
+	LECTURE: 'Лекція',
+	PRACTICE: 'Практичне',
+	LAB: 'Лабораторна',
+	SEMINAR: 'Семінар',
+	CONSULTATION: 'Консультація',
+	SPRS: 'СПРС'
 }

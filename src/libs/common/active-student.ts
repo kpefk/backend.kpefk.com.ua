@@ -6,9 +6,12 @@ import type { Prisma } from '@prisma/client'
  * відвідуваності та підгруп — щоб журнал не показував вибулих студентів.
  */
 export function activeStudentWhere(): Prisma.StudentWhereInput {
-  return {
-    expelEducationTypeName: null,
-    academicLeaveTypeName: null,
-    OR: [{ educationDateEnd: null }, { educationDateEnd: { gte: new Date() } }],
-  }
+	return {
+		expelEducationTypeName: null,
+		academicLeaveTypeName: null,
+		OR: [
+			{ educationDateEnd: null },
+			{ educationDateEnd: { gte: new Date() } }
+		]
+	}
 }

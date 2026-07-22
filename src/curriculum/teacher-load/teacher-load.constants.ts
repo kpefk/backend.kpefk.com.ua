@@ -27,7 +27,7 @@ export const NORM_MAX_DISCIPLINES = 5
  *   - заочна / дистанційна  → 6% від обсягу дисципліни
  */
 export const NORM_CONSULTATION_RATIO_FULL_TIME = 0.02
-export const NORM_CONSULTATION_RATIO_DISTANCE   = 0.06
+export const NORM_CONSULTATION_RATIO_DISTANCE = 0.06
 
 /**
  * Мінімальна кількість студентів у підгрупі для практ./лаб. занять.
@@ -54,7 +54,7 @@ export const MAX_SUBGROUP_COUNT = 2
  * @returns     Ліміт у годинах за рік.
  */
 export function teachingHoursLimit(rate: number): number {
-  return Math.round(NORM_TEACHING_HOURS_PER_RATE * rate)
+	return Math.round(NORM_TEACHING_HOURS_PER_RATE * rate)
 }
 
 /**

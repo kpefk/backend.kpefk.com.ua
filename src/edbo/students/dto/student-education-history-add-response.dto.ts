@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger'
 
 export class StudentEducationHistoryAddResponseDto {
-  @ApiProperty({
-    description: 'Результат виконання операції',
-    example: 'OK',
-  })
-  result!: string;
+	@ApiProperty({
+		description: 'Результат виконання операції',
+		example: 'OK'
+	})
+	result!: string
 }

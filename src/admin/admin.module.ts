@@ -11,4 +11,4 @@ import { AdminService } from './admin.service'
 	controllers: [AdminController],
 	providers: [AdminService, UserService, MailService, PrismaService]
 })
-export class AdminModule { }
+export class AdminModule {}

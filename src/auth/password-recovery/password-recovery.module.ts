@@ -7,7 +7,7 @@ import { PasswordRecoveryController } from './password-recovery.controller'
 import { PasswordRecoveryService } from './password-recovery.service'
 
 @Module({
-  controllers: [PasswordRecoveryController],
-  providers: [PasswordRecoveryService, UserService, MailService]
+	controllers: [PasswordRecoveryController],
+	providers: [PasswordRecoveryService, UserService, MailService]
 })
 export class PasswordRecoveryModule {}

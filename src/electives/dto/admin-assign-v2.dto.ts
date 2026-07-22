@@ -1,19 +1,19 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator'
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
 export class AdminAssignV2Dto {
-  @IsString()
-  @IsNotEmpty()
-  studentId!: string
+	@IsString()
+	@IsNotEmpty()
+	studentId!: string
 
-  @IsString()
-  @IsNotEmpty()
-  seasonId!: string
+	@IsString()
+	@IsNotEmpty()
+	seasonId!: string
 
-  @IsString()
-  @IsNotEmpty()
-  componentId!: string
+	@IsString()
+	@IsNotEmpty()
+	componentId!: string
 
-  @IsOptional()
-  @IsString()
-  overrideReason?: string
+	@IsOptional()
+	@IsString()
+	overrideReason?: string
 }

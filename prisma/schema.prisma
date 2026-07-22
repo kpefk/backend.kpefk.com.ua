@@ -41,6 +41,10 @@ model User {
   recordedSemesterGrades  SemesterGrade[]               @relation("SemesterGradeRecordedBy")
   assignedDiplomaSupervisions DiplomaSupervisionAssignment[]
   createdSurveys          Survey[]                      @relation("SurveyCreatedBy")
+  updatedRatingBonuses    StudentRatingBonus[]          @relation("RatingBonusUpdatedBy")
+  recordedAttestations    TeacherAttestation[]          @relation("AttestationRecordedBy")
+  decidedCreditRecognitions CreditRecognition[]         @relation("CreditRecognitionDecidedBy")
+  decidedAcademicMobilities AcademicMobility[]          @relation("AcademicMobilityDecidedBy")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
@@ -209,6 +213,13 @@ model Student {
   surveyCompletions SurveyCompletion[]
   surveyAnswers     SurveyAnswer[]
 
+  // Rating domain (back-relations)
+  ratingBonuses StudentRatingBonus[]
+
+  // Recognition domain (back-relations)
+  creditRecognitions CreditRecognition[]
+  academicMobilities AcademicMobility[]
+
   @@map("students")
 }
 
@@ -221,6 +232,9 @@ model Group {
 
   curatorId String?  @unique @map("curator_id")
   curator   Teacher? @relation(fields: [curatorId], references: [id], onDelete: SetNull)
+
+  /// Група в архіві (усі студенти завершили навчання / відраховані). При архівації куратор відкріплюється.
+  archivedAt DateTime? @map("archived_at")
 
   students    Student[]
   historyFrom StudentGroupHistory[] @relation("FromGroup")
@@ -331,6 +345,7 @@ model Teacher {
   lessonOverrideAssignments  TeacherLoadLessonAssignment[]     @relation("LessonOverrideTeacher")
   diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
   qualificationUpgrades      TeacherQualificationUpgrade[]
+  attestations               TeacherAttestation[]
   scheduleEntries            ScheduleEntry[]
   substitutionReplacements   ScheduleSubstitution[]            @relation("SubstitutionTeacher")
   lessonSessions             LessonSession[]
@@ -380,6 +395,55 @@ model TeacherQualificationUpgrade {
   updatedAt DateTime @updatedAt      @map("updated_at")
 
   @@map("teacher_qualification_upgrades")
+}
+
+/// Вид атестації педагогічного працівника (Ст. 50 №2145-VIII, Ст. 59 №2745-VIII).
+enum AttestationType {
+  REGULAR       /// Чергова (раз на 5 років)
+  EXTRAORDINARY /// Позачергова
+}
+
+/// Атестація педагогічного працівника: рішення атестаційної комісії про присвоєння/
+/// підтвердження кваліфікаційної категорії та педагогічного звання. ОКРЕМА від
+/// підвищення кваліфікації (TeacherQualificationUpgrade). Періодичність — 5 років.
+model TeacherAttestation {
+  id String @id @default(uuid())
+
+  teacherId String  @map("teacher_id")
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  /// Дата рішення атестаційної комісії
+  attestationDate DateTime @map("attestation_date")
+
+  type AttestationType @default(REGULAR)
+
+  /// Присвоєна/підтверджена кваліфікаційна категорія (вільний текст: стандартні значення
+  /// або тарифний розряд майстра тощо — перелік делеговано КМУ)
+  resultCategory String @map("result_category")
+
+  /// Присвоєне/підтверджене педагогічне звання (не завжди присвоюється)
+  resultTitle String? @map("result_title")
+
+  /// Відповідає займаній посаді
+  correspondsToPosition Boolean @default(true) @map("corresponds_to_position")
+
+  orderNumber String?   @map("order_number") // № наказу про атестацію
+  orderDate   DateTime? @map("order_date")
+
+  /// Дата наступної чергової атестації (за замовчуванням +5 років, редаговане)
+  nextAttestationDate DateTime @map("next_attestation_date")
+
+  notes String?
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("AttestationRecordedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@index([teacherId])
+  @@index([nextAttestationDate])
+  @@map("teacher_attestations")
 }
 
 /// Model for classrooms
@@ -488,6 +552,13 @@ enum NationalGrade {
 enum SemesterGradeStatus {
   ACTIVE     // Поточна дійсна оцінка
   SUPERSEDED // Замінена наступною спробою
+}
+
+/// Джерело семестрової оцінки — для підпису в заліковій книжці
+enum GradeOrigin {
+  REGULAR    // Звичайна оцінка (виставлена викладачем)
+  RECOGNIZED // Перезарахована (Наказ 510 п.6.7/6.8)
+  MOBILITY   // Визнана за результатами академічної мобільності (розд. VIII)
 }
 
 /// Укрупнена категорія освітнього компонента (для структури плану)
@@ -812,6 +883,8 @@ model CurriculumComponentTerm {
   electiveComponent  ElectiveComponent?
   semesterGrades     SemesterGrade[]
   diplomaSupervisionAssignments DiplomaSupervisionAssignment[]
+  creditRecognitionItems  CreditRecognitionItem[]
+  academicMobilityItems   AcademicMobilityItem[]
 
   @@unique([componentId, semesterNumber])
   @@index([componentId])
@@ -1763,9 +1836,13 @@ enum SurveyStatus {
 }
 
 enum SurveyQuestionType {
-  RATING // Шкала 1..5
-  YES_NO // Так / Ні
-  TEXT   // Вільна відповідь
+  RATING        // Рейтинг (зірки 1..5)
+  TEXT          // Коротка відповідь (однорядкова)
+  PARAGRAPH     // Абзац (textarea)
+  SINGLE_CHOICE // Один варіант (radio) — заміняє колишній YES_NO
+  MULTI_CHOICE  // Прапорці (кілька)
+  DROPDOWN      // Спадний список (один)
+  SCALE         // Лінійна шкала (налаштовувана 1..N + підписи)
 }
 
 /// Кампанія опитування здобувачів (внутрішня система забезпечення якості освіти).
@@ -1807,10 +1884,31 @@ model SurveyQuestion {
   type     SurveyQuestionType
   required Boolean @default(true)
 
+  /// Лінійна шкала (SCALE): межі та підписи країв.
+  scaleMin      Int?    @map("scale_min")
+  scaleMax      Int?    @map("scale_max")
+  scaleMinLabel String? @map("scale_min_label")
+  scaleMaxLabel String? @map("scale_max_label")
+
+  options SurveyQuestionOption[]
   answers SurveyAnswer[]
 
   @@unique([surveyId, order])
   @@map("survey_questions")
+}
+
+/// Варіант відповіді для SINGLE_CHOICE / MULTI_CHOICE / DROPDOWN.
+model SurveyQuestionOption {
+  id String @id @default(uuid())
+
+  questionId String         @map("question_id")
+  question   SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  order Int
+  text  String
+
+  @@unique([questionId, order])
+  @@map("survey_question_options")
 }
 
 /// Цільова група кампанії. Якщо у кампанії немає жодної — адресовано всім студентам.
@@ -1854,14 +1952,45 @@ model SurveyAnswer {
   studentId String?  @map("student_id")
   student   Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 
-  ratingValue Int?     @map("rating_value") // RATING: 1..5
-  boolValue   Boolean? @map("bool_value")   // YES_NO
-  textValue   String?  @map("text_value")   // TEXT
+  ratingValue Int?     @map("rating_value") // RATING / SCALE
+  textValue   String?  @map("text_value")   // TEXT / PARAGRAPH
+
+  /// Обрані варіанти (UUID) для SINGLE_CHOICE / MULTI_CHOICE / DROPDOWN. Порожньо для решти.
+  selectedOptionIds String[] @default([]) @map("selected_option_ids")
 
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([questionId])
   @@map("survey_answers")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║        RATING — рейтинг успішності для стипендії (Постанова КМУ №1050)      ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Додатковий бал до рейтингу успішності (за навчальні/наукові/спортивні досягнення).
+/// Ручне поле, редагується керівництвом у таблиці рейтингу. Рейтинговий бал сам
+/// не зберігається — рахується на льоту з SemesterGrade (формула зі зразка 268.xlsx).
+model StudentRatingBonus {
+  id String @id @default(uuid())
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  academicYear   String @map("academic_year")
+  semesterNumber Int    @map("semester_number")
+
+  points Float   @default(0)
+  reason String?
+
+  updatedById String @map("updated_by_id")
+  updatedBy   User   @relation("RatingBonusUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  @@unique([studentId, academicYear, semesterNumber])
+  @@map("student_rating_bonuses")
 }
 
 // ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -2047,6 +2176,10 @@ model University {
   syncedAt  DateTime @map("synced_at")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt      @map("updated_at")
+
+  // Recognition domain (back-relations — no new columns)
+  creditRecognitionSources CreditRecognition[]
+  mobilityPartners         AcademicMobility[]
 
   @@map("universities")
 }
@@ -2281,6 +2414,8 @@ model SemesterGrade {
   nationalGrade NationalGrade       @map("national_grade")
   attempt       Int                 @default(1)
   status        SemesterGradeStatus @default(ACTIVE)
+  /// Джерело оцінки: звичайна / перезарахована / академічна мобільність (для підпису в трансcripті)
+  origin        GradeOrigin         @default(REGULAR) @map("origin")
 
   previousAttemptId String?        @map("previous_attempt_id")
   previousAttempt   SemesterGrade? @relation("RetakeChain", fields: [previousAttemptId], references: [id], onDelete: SetNull)
@@ -2293,6 +2428,8 @@ model SemesterGrade {
   student                 Student                 @relation(fields: [studentId], references: [id], onDelete: Restrict)
   curriculumComponentTerm CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
   recordedBy              User                    @relation("SemesterGradeRecordedBy", fields: [recordedById], references: [id], onDelete: Restrict)
+  creditRecognitionItem   CreditRecognitionItem?
+  academicMobilityItem    AcademicMobilityItem?
 
   @@unique([studentId, curriculumComponentTermId, attempt])
   @@index([studentId, academicYear])
@@ -2300,4 +2437,306 @@ model SemesterGrade {
   @@index([recordedById])
   @@index([status])
   @@map("semester_grades")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║          RECOGNITION DOMAIN (перезарахування кредитів + мобільність)         ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Статус акту визнання результатів (спільний для обох модулів)
+enum RecognitionStatus {
+  DRAFT     // Чернетка — редагується, оцінки ще не згенеровані
+  CONFIRMED // Підтверджено — згенеровано SemesterGrade, редагування заблоковане
+}
+
+/// Підстава перезарахування (Наказ 510)
+enum CreditRecognitionType {
+  PRIOR_EDUCATION // Документ про раніше здобуту освіту (п.6.7)
+  NON_FORMAL      // Неформальна/інформальна освіта (п.6.8, Наказ МОН №130)
+}
+
+/// Акт перезарахування освітніх компонентів і кредитів (Наказ 510 п.6.7/6.8)
+model CreditRecognition {
+  id String @id @default(uuid())
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  type   CreditRecognitionType
+  status RecognitionStatus     @default(DRAFT)
+
+  sourceInstitutionName String    @map("source_institution_name") // вільний текст (в т.ч. іноземний/ПТНЗ)
+  sourceUniversityId    String?   @map("source_university_id")
+  sourceUniversity      University? @relation(fields: [sourceUniversityId], references: [id], onDelete: SetNull)
+  sourceDocument        String?   @map("source_document")         // № / назва документа про освіту
+  sourceDocumentDate    DateTime? @map("source_document_date")
+
+  protocolNumber String?   @map("protocol_number") // рішення (екзам. комісія / навч. частина)
+  protocolDate   DateTime? @map("protocol_date")
+
+  decidedById String @map("decided_by_id")
+  decidedBy   User   @relation("CreditRecognitionDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  items CreditRecognitionItem[]
+
+  @@index([studentId])
+  @@map("credit_recognitions")
+}
+
+/// Один перезарахований компонент у складі акту
+model CreditRecognitionItem {
+  id String @id @default(uuid())
+
+  recognitionId String            @map("recognition_id")
+  recognition   CreditRecognition @relation(fields: [recognitionId], references: [id], onDelete: Cascade)
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+
+  academicYear String  @map("academic_year")
+  creditsEcts  Decimal @map("credits_ects") @db.Decimal(6, 2)
+
+  finalGrade    Int?          @map("final_grade") // у шкалі цільового компонента; null для CREDIT
+  nationalGrade NationalGrade @map("national_grade")
+
+  generatedGradeId String?        @unique @map("generated_grade_id")
+  generatedGrade   SemesterGrade? @relation(fields: [generatedGradeId], references: [id], onDelete: SetNull)
+
+  @@unique([recognitionId, curriculumComponentTermId])
+  @@index([curriculumComponentTermId])
+  @@map("credit_recognition_items")
+}
+
+/// Напрям академічної мобільності
+enum MobilityDirection {
+  OUTBOUND // Виїзна (наш здобувач у закладі-партнері)
+  INBOUND  // Вхідна (здобувач партнера в нас)
+}
+
+/// Акт академічної мобільності (Наказ 510 розд. VIII, Постанова КМУ №579)
+model AcademicMobility {
+  id String @id @default(uuid())
+
+  studentId String  @map("student_id")
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  direction MobilityDirection
+  status    RecognitionStatus @default(DRAFT)
+
+  partnerInstitutionName String      @map("partner_institution_name") // вільний текст
+  partnerUniversityId    String?     @map("partner_university_id")
+  partnerUniversity      University? @relation(fields: [partnerUniversityId], references: [id], onDelete: SetNull)
+  country                String?
+
+  periodFrom DateTime @map("period_from")
+  periodTo   DateTime @map("period_to")
+
+  agreementNumber String?   @map("agreement_number") // договір про мобільність
+  agreementDate   DateTime? @map("agreement_date")
+  protocolNumber  String?   @map("protocol_number")  // рішення про визнання результатів
+  protocolDate    DateTime? @map("protocol_date")
+
+  decidedById String @map("decided_by_id")
+  decidedBy   User   @relation("AcademicMobilityDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  notes String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  items AcademicMobilityItem[]
+
+  @@index([studentId])
+  @@map("academic_mobilities")
+}
+
+/// Один визнаний компонент у складі акту мобільності
+model AcademicMobilityItem {
+  id String @id @default(uuid())
+
+  mobilityId String           @map("mobility_id")
+  mobility   AcademicMobility @relation(fields: [mobilityId], references: [id], onDelete: Cascade)
+
+  curriculumComponentTermId String                  @map("curriculum_component_term_id")
+  curriculumComponentTerm   CurriculumComponentTerm @relation(fields: [curriculumComponentTermId], references: [id], onDelete: Restrict)
+
+  academicYear String  @map("academic_year")
+  creditsEcts  Decimal @map("credits_ects") @db.Decimal(6, 2)
+
+  finalGrade    Int?          @map("final_grade")
+  nationalGrade NationalGrade @map("national_grade")
+
+  partnerComponentName String? @map("partner_component_name") // назва курсу в закладі-партнері (довідково)
+
+  generatedGradeId String?        @unique @map("generated_grade_id")
+  generatedGrade   SemesterGrade? @relation(fields: [generatedGradeId], references: [id], onDelete: SetNull)
+
+  @@unique([mobilityId, curriculumComponentTermId])
+  @@index([curriculumComponentTermId])
+  @@map("academic_mobility_items")
+}
+
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                    ADMISSIONS DOMAIN (вступна кампанія)                      ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+/// Статус кампанії: активна (з повними ПД) / архів (ПД вичищено).
+enum AdmissionCampaignStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// Одна кампанія на рік — керує активністю та архівацією (вичищенням ПД).
+model AdmissionCampaign {
+  id            String                  @id @default(uuid())
+  admissionYear Int                     @unique @map("admission_year")
+  status        AdmissionCampaignStatus @default(ACTIVE)
+  lastSyncedAt  DateTime?               @map("last_synced_at")
+  /// Коли вичищено ПД при архівації (Закон №2297-VI — мінімізація).
+  piiPurgedAt   DateTime?               @map("pii_purged_at")
+
+  // ── Авто-реєстрація + частий ресинк (налаштування кампанії) ──
+  /// Майстер-вимикач авто-реєстрації (статус 1 → 5) глобально для всіх активних КП.
+  autoRegisterEnabled     Boolean   @default(false) @map("auto_register_enabled")
+  /// Автопроставляння номера справи (PersonalCode) під час авто-реєстрації.
+  autoCaseNumberEnabled   Boolean   @default(false) @map("auto_case_number_enabled")
+  /// Частий ресинк заяв увімкнено (для коректної нумерації справ).
+  pollEnabled             Boolean   @default(false) @map("poll_enabled")
+  pollWindowStartHour     Int       @default(9)     @map("poll_window_start_hour")
+  pollWindowEndHour       Int       @default(18)    @map("poll_window_end_hour")
+  pollIntervalActiveSec   Int       @default(40)    @map("poll_interval_active_sec")
+  pollIntervalOffHoursSec Int       @default(3600)  @map("poll_interval_off_hours_sec")
+  /// Глобальний фолбек тексту «Час та місце проведення творчого конкурсу» (статус 5).
+  registrationDescryptionDefault String? @map("registration_descryption_default")
+  lastAutoPollAt          DateTime? @map("last_auto_poll_at")
+
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
+
+  @@map("admission_campaigns")
+}
+
+/// Знімок конкурсної пропозиції (КП) за рік.
+model AdmissionOffer {
+  id                       String @id @default(uuid())
+  admissionYear            Int    @map("admission_year")
+  universitySpecialitiesId Int    @map("university_specialities_id") // ЄДЕБО id КП
+
+  universitySpecialitiesName String? @map("university_specialities_name")
+  specialityCode             String? @map("speciality_code")
+  specialityName             String? @map("speciality_name")
+  specializationName         String? @map("specialization_name")
+  qualificationGroupName     String? @map("qualification_group_name") // освітній ступінь
+  educationBaseName          String? @map("education_base_name")      // основа вступу
+  educationFormName          String? @map("education_form_name")
+  courseName                 String? @map("course_name")
+  offerTypeName              String? @map("offer_type_name")          // вид КП
+
+  // Обсяги держзамовлення / контракт
+  maxOrder      Int? @map("max_order")
+  budgetOrder   Int? @map("budget_order")   // поле `order` ЄДЕБО
+  minOrder      Int? @map("min_order")
+  totalOrder    Int? @map("total_order")
+  orderContract Int? @map("order_contract")
+  orderLicense  Int? @map("order_license")
+  educationPrice Int?    @map("education_price")
+  currencyName   String? @map("currency_name")
+
+  personRequestDateStart DateTime? @map("person_request_date_start")
+  personRequestDateEnd   DateTime? @map("person_request_date_end")
+  programNames           String?   @map("program_names")
+
+  raw      Json?
+  syncedAt DateTime @map("synced_at")
+
+  // ── «Наші» атрибути (sync НЕ перезаписує — mapOffer їх не встановлює) ──
+  /// Суфікс номера справи цієї КП, напр. «Т», «Тс», «Б». Разом із послідовним NN → «NN-суфікс».
+  caseSuffix              String? @map("case_suffix")
+  /// Час та місце проведення творчого конкурсу — текст до статусу 5 «Зареєстровано».
+  registrationDescryption String? @map("registration_descryption")
+
+  applications AdmissionApplication[]
+
+  @@unique([admissionYear, universitySpecialitiesId])
+  @@index([admissionYear])
+  @@map("admission_offers")
+}
+
+/// Знімок заяви вступника. ПД (fio/контакти/документи) — лише в активній кампанії;
+/// вичищаються (NULL) при архівації року.
+model AdmissionApplication {
+  id              String  @id @default(uuid())
+  offerId         String  @map("offer_id")
+  admissionYear   Int     @map("admission_year")
+  personRequestId String  @map("person_request_id")
+  personCodeU     String? @map("person_code_u") // псевдо-ключ (воронка / лінк до Student)
+
+  // ── Звітні поля (зберігаються завжди, у т.ч. в архіві) ──
+  statusTypeId                 String?  @map("status_type_id")
+  statusTypeName               String?  @map("status_type_name")
+  konkursValue                 Decimal? @map("konkurs_value") @db.Decimal(6, 3)
+  requestPriority              Int?     @map("request_priority")
+  enrollPriority               Int?     @map("enroll_priority")
+  enrollLevel                  Int?     @map("enroll_level") // 0=контракт,1=бюджет,2=обидва
+  isEz                         Boolean? @map("is_ez")
+  isClaimForBudget             Boolean? @map("is_claim_for_budget")
+  isClaimForContract           Boolean? @map("is_claim_for_contract")
+  // Поточний стан заяви (для personRequest/update — щоб не затерти інші поля при зміні номера справи)
+  isGraduateOneYear                   Boolean? @map("is_graduate_one_year")
+  isAdditionalExam                    Boolean? @map("is_additional_exam")
+  isBudgetEducation                   Int?     @map("is_budget_education")
+  isAnotherBudgetAllowed              Boolean? @map("is_another_budget_allowed")
+  isSimiliarSpeciality                Boolean? @map("is_similiar_speciality")
+  isInterviewSuccess                  Boolean? @map("is_interview_success")
+  informationOriginalDocumentLocation Boolean? @map("information_original_document_location")
+  budgetRecommendationTypeId   Int?     @map("budget_recommendation_type_id")
+  contractRecommendationTypeId Int?     @map("contract_recommendation_type_id")
+  algRecommendationTypeId      Int?     @map("alg_recommendation_type_id")
+  isOriginalDocumentsAdded     Boolean? @map("is_original_documents_added")
+  isConfirmedContract          Boolean? @map("is_confirmed_contract")
+  isSignedDecision             Boolean? @map("is_signed_decision")
+  documentAwardTypeId          Int?     @map("document_award_type_id")
+  foreignTypeId                Int?     @map("foreign_type_id")
+  countryId                    Int?     @map("country_id")
+  orderOfEnrollmentId          Int?     @map("order_of_enrollment_id") // → зарахований
+  dateCreate                   DateTime? @map("date_create")
+  dateLastChange               DateTime? @map("date_last_change")
+
+  // ── ПД (лише активна кампанія; NULL після архівації) ──
+  fio             String?   @map("fio")
+  birthday        DateTime? @map("birthday")
+  personSexName   String?   @map("person_sex_name")
+  phone           String?   @map("phone")
+  email           String?   @map("email")
+  documentTypeId  Int?      @map("document_type_id")
+  documentSeries  String?   @map("document_series")
+  documentNumbers String?   @map("document_numbers")
+  documentIssued  String?   @map("document_issued")
+  documentDateGet DateTime? @map("document_date_get")
+  personalCode    String?   @map("personal_code")
+
+  // ── Документ про освіту (свідоцтво/атестат) — тягнеться для заочних КП ──
+  entryEduDocTypeName  String?   @map("entry_edu_doc_type_name")
+  entryEduDocSeries    String?   @map("entry_edu_doc_series")
+  entryEduDocNumber    String?   @map("entry_edu_doc_number")
+  entryEduDocDateGet   DateTime? @map("entry_edu_doc_date_get")
+  entryEduDocIssued    String?   @map("entry_edu_doc_issued")
+  entryEduDocYearEnd   Int?      @map("entry_edu_doc_year_end")
+  /// Мітка спроби вибірки документів з ЄДЕБО (щоб не смикати API повторно для тієї ж особи).
+  entryEduDocFetchedAt DateTime? @map("entry_edu_doc_fetched_at")
+
+  syncedAt DateTime @map("synced_at")
+
+  offer AdmissionOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([admissionYear, personRequestId])
+  @@index([offerId])
+  @@index([admissionYear])
+  @@index([personCodeU])
+  @@map("admission_applications")
 }

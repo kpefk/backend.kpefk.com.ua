@@ -14,13 +14,13 @@ import { EdboSyncService } from './edbo-sync.service'
 @Controller('university')
 @Authorization()
 export class UniversityController {
-  public constructor(private readonly edboSyncService: EdboSyncService) {}
+	public constructor(private readonly edboSyncService: EdboSyncService) {}
 
-  @ApiOperation({ summary: 'Інформація про заклад освіти' })
-  @ApiResponse({ status: 200, description: 'University | null' })
-  @Get()
-  @HttpCode(HttpStatus.OK)
-  public getUniversity() {
-    return this.edboSyncService.getUniversity()
-  }
+	@ApiOperation({ summary: 'Інформація про заклад освіти' })
+	@ApiResponse({ status: 200, description: 'University | null' })
+	@Get()
+	@HttpCode(HttpStatus.OK)
+	public getUniversity() {
+		return this.edboSyncService.getUniversity()
+	}
 }

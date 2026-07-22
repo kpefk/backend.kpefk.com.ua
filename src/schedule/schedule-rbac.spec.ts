@@ -18,65 +18,67 @@ import { RolesGuard } from '@/auth/guards/roles.guard'
  * .tsx-шаблонами, які jest у цьому репозиторії не резолвить.)
  */
 const HOMEROOM_ROLES = [
-  UserRole.SCHEDULE_DISPATCHER,
-  UserRole.DEPUTY_DIRECTOR,
-  UserRole.DIRECTOR,
-  UserRole.ADMINISTRATOR,
+	UserRole.SCHEDULE_DISPATCHER,
+	UserRole.DEPUTY_DIRECTOR,
+	UserRole.DIRECTOR,
+	UserRole.ADMINISTRATOR
 ] as const
 
 function contextFor(user?: { role: UserRole }): ExecutionContext {
-  return {
-    getHandler: () => undefined,
-    getClass: () => undefined,
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-  } as unknown as ExecutionContext
+	return {
+		getHandler: () => undefined,
+		getClass: () => undefined,
+		switchToHttp: () => ({ getRequest: () => ({ user }) })
+	} as unknown as ExecutionContext
 }
 
 function makeGuard() {
-  const reflector = {
-    getAllAndOverride: jest.fn().mockReturnValue([...HOMEROOM_ROLES]),
-  } as unknown as Reflector
-  return new RolesGuard(reflector)
+	const reflector = {
+		getAllAndOverride: jest.fn().mockReturnValue([...HOMEROOM_ROLES])
+	} as unknown as Reflector
+	return new RolesGuard(reflector)
 }
 
 describe('RBAC виховної години (ТЗ §3.5)', () => {
-  it('STUDENT → 403 ForbiddenException', async () => {
-    const guard = makeGuard()
-    await expect(
-      guard.canActivate(contextFor({ role: UserRole.STUDENT })),
-    ).rejects.toBeInstanceOf(ForbiddenException)
-  })
+	it('STUDENT → 403 ForbiddenException', async () => {
+		const guard = makeGuard()
+		await expect(
+			guard.canActivate(contextFor({ role: UserRole.STUDENT }))
+		).rejects.toBeInstanceOf(ForbiddenException)
+	})
 
-  it('TEACHER → 403 ForbiddenException', async () => {
-    const guard = makeGuard()
-    await expect(
-      guard.canActivate(contextFor({ role: UserRole.TEACHER })),
-    ).rejects.toBeInstanceOf(ForbiddenException)
-  })
+	it('TEACHER → 403 ForbiddenException', async () => {
+		const guard = makeGuard()
+		await expect(
+			guard.canActivate(contextFor({ role: UserRole.TEACHER }))
+		).rejects.toBeInstanceOf(ForbiddenException)
+	})
 
-  it('неавтентифікований → 403 ForbiddenException', async () => {
-    const guard = makeGuard()
-    await expect(guard.canActivate(contextFor(undefined))).rejects.toBeInstanceOf(
-      ForbiddenException,
-    )
-  })
+	it('неавтентифікований → 403 ForbiddenException', async () => {
+		const guard = makeGuard()
+		await expect(
+			guard.canActivate(contextFor(undefined))
+		).rejects.toBeInstanceOf(ForbiddenException)
+	})
 
-  it('SCHEDULE_DISPATCHER → дозволено', async () => {
-    const guard = makeGuard()
-    await expect(
-      guard.canActivate(contextFor({ role: UserRole.SCHEDULE_DISPATCHER })),
-    ).resolves.toBe(true)
-  })
+	it('SCHEDULE_DISPATCHER → дозволено', async () => {
+		const guard = makeGuard()
+		await expect(
+			guard.canActivate(
+				contextFor({ role: UserRole.SCHEDULE_DISPATCHER })
+			)
+		).resolves.toBe(true)
+	})
 
-  it('ADMINISTRATOR → дозволено', async () => {
-    const guard = makeGuard()
-    await expect(
-      guard.canActivate(contextFor({ role: UserRole.ADMINISTRATOR })),
-    ).resolves.toBe(true)
-  })
+	it('ADMINISTRATOR → дозволено', async () => {
+		const guard = makeGuard()
+		await expect(
+			guard.canActivate(contextFor({ role: UserRole.ADMINISTRATOR }))
+		).resolves.toBe(true)
+	})
 
-  it('перелік дозволених ролей не містить STUDENT/TEACHER', () => {
-    expect(HOMEROOM_ROLES).not.toContain(UserRole.STUDENT)
-    expect(HOMEROOM_ROLES).not.toContain(UserRole.TEACHER)
-  })
+	it('перелік дозволених ролей не містить STUDENT/TEACHER', () => {
+		expect(HOMEROOM_ROLES).not.toContain(UserRole.STUDENT)
+		expect(HOMEROOM_ROLES).not.toContain(UserRole.TEACHER)
+	})
 })

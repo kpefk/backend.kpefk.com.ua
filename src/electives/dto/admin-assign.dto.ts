@@ -1,16 +1,16 @@
 import { IsInt, IsString, Min } from 'class-validator'
 
 export class AdminAssignDto {
-  @IsString()
-  studentId!: string
+	@IsString()
+	studentId!: string
 
-  @IsString()
-  electiveId!: string
+	@IsString()
+	electiveId!: string
 
-  @IsInt()
-  @Min(1)
-  semester!: number
+	@IsInt()
+	@Min(1)
+	semester!: number
 
-  @IsString()
-  academicYear!: string
+	@IsString()
+	academicYear!: string
 }

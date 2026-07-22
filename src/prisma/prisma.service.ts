@@ -5,10 +5,12 @@ import { PrismaClient } from '@prisma/client'
 @Injectable()
 export class PrismaService
 	extends PrismaClient
-	implements OnModuleInit, OnModuleDestroy {
-		
+	implements OnModuleInit, OnModuleDestroy
+{
 	public constructor() {
-		const adapter = new PrismaPg({ connectionString: process.env.POSTGRES_URI })
+		const adapter = new PrismaPg({
+			connectionString: process.env.POSTGRES_URI
+		})
 		super({ adapter })
 	}
 

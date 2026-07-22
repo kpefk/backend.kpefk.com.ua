@@ -1,4 +1,9 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common'
+import {
+	CallHandler,
+	ExecutionContext,
+	Injectable,
+	NestInterceptor
+} from '@nestjs/common'
 import { Prisma } from '@prisma/client'
 import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
@@ -19,30 +24,39 @@ import { map } from 'rxjs/operators'
  */
 @Injectable()
 export class DecimalSerializerInterceptor implements NestInterceptor {
-  public intercept(_ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
-    return next.handle().pipe(map((data) => serializeDecimals(data)))
-  }
+	public intercept(
+		_ctx: ExecutionContext,
+		next: CallHandler
+	): Observable<unknown> {
+		return next.handle().pipe(map(data => serializeDecimals(data)))
+	}
 }
 
 function serializeDecimals(value: unknown): unknown {
-  if (value instanceof Prisma.Decimal) {
-    // Use toFixed(2) to match the @db.Decimal(6,2) schema precision.
-    // This produces "4.00", "4.50", "12.00" etc. — consistent with what a
-    // vanilla Prisma JSON response would emit via Decimal.prototype.toJSON().
-    return value.toFixed(2)
-  }
+	if (value instanceof Prisma.Decimal) {
+		// Use toFixed(2) to match the @db.Decimal(6,2) schema precision.
+		// This produces "4.00", "4.50", "12.00" etc. — consistent with what a
+		// vanilla Prisma JSON response would emit via Decimal.prototype.toJSON().
+		return value.toFixed(2)
+	}
 
-  if (Array.isArray(value)) {
-    return value.map(serializeDecimals)
-  }
+	if (Array.isArray(value)) {
+		return value.map(serializeDecimals)
+	}
 
-  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
-    const out: Record<string, unknown> = {}
-    for (const key of Object.keys(value as object)) {
-      out[key] = serializeDecimals((value as Record<string, unknown>)[key])
-    }
-    return out
-  }
+	if (
+		value !== null &&
+		typeof value === 'object' &&
+		!(value instanceof Date)
+	) {
+		const out: Record<string, unknown> = {}
+		for (const key of Object.keys(value)) {
+			out[key] = serializeDecimals(
+				(value as Record<string, unknown>)[key]
+			)
+		}
+		return out
+	}
 
-  return value
+	return value
 }

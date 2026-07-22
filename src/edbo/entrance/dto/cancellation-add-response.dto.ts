@@ -1,9 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger'
 
 export class CancellationAddResponseDto {
-  @ApiProperty({
-    description: 'Код створеного акту про технічні помилки',
-    example: 1,
-  })
-  requestCancellationId!: number;
+	@ApiProperty({
+		description: 'Код створеного акту про технічні помилки',
+		example: 1
+	})
+	requestCancellationId!: number
 }

@@ -7,14 +7,14 @@
  * @returns Map studentId → номер підгрупи 1..N
  */
 export function defaultSplit(
-  orderedStudentIds: string[],
-  subgroupCount: number,
+	orderedStudentIds: string[],
+	subgroupCount: number
 ): Map<string, number> {
-  const n = Math.max(1, subgroupCount)
-  const perGroup = Math.max(1, Math.ceil(orderedStudentIds.length / n))
-  const map = new Map<string, number>()
-  orderedStudentIds.forEach((id, i) => {
-    map.set(id, Math.min(n, Math.floor(i / perGroup) + 1))
-  })
-  return map
+	const n = Math.max(1, subgroupCount)
+	const perGroup = Math.max(1, Math.ceil(orderedStudentIds.length / n))
+	const map = new Map<string, number>()
+	orderedStudentIds.forEach((id, i) => {
+		map.set(id, Math.min(n, Math.floor(i / perGroup) + 1))
+	})
+	return map
 }

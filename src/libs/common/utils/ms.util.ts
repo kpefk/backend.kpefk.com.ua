@@ -45,9 +45,7 @@ type UnitAnyCase = Unit | Uppercase<Unit> | Lowercase<Unit>
 
 // Type for string value that can contain a number and an optional time unit
 export type StringValue =
-	| `${number}`
-	| `${number}${UnitAnyCase}`
-	| `${number} ${UnitAnyCase}`
+	`${number}` | `${number}${UnitAnyCase}` | `${number} ${UnitAnyCase}`
 
 /**
  * Converts a string value representing time to milliseconds.
@@ -124,7 +122,7 @@ export function ms(str: StringValue): number {
 			return n
 		default:
 			throw new Error(
-				`Помилка: одиниця часу ${type} була розпізнана, але не існує відповідного випадку. Будь ласка, перевірте введені дані.`
+				`Помилка: одиниця часу ${String(type)} була розпізнана, але не існує відповідного випадку. Будь ласка, перевірте введені дані.`
 			)
 	}
 }

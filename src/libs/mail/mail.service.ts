@@ -24,7 +24,7 @@ export class MailService {
 	public constructor(
 		private readonly mailerService: MailerService,
 		private readonly configService: ConfigService
-	) { }
+	) {}
 
 	/**
 	 * Sends an email for password reset.
@@ -32,7 +32,10 @@ export class MailService {
 	 * @param token - The token for password reset.
 	 * @returns A promise that resolves when the email is successfully sent.
 	 */
-	public async sendPasswordResetEmail(email: string, token: string) {
+	public async sendPasswordResetEmail(
+		email: string,
+		token: string
+	): Promise<void> {
 		const domain = this.configService.getOrThrow<string>('ALLOWED_ORIGIN')
 		const html = await render(ResetPasswordTemplate({ domain, token }))
 
@@ -45,7 +48,10 @@ export class MailService {
 	 * @param token - The two-factor authentication token.
 	 * @returns A promise that resolves when the email is successfully sent.
 	 */
-	public async sendTwoFactorTokenEmail(email: string, token: string) {
+	public async sendTwoFactorTokenEmail(
+		email: string,
+		token: string
+	): Promise<void> {
 		const html = await render(TwoFactorAuthTemplate({ token }))
 
 		return this.sendMail(email, 'Підтвердження входу', html)
@@ -58,8 +64,12 @@ export class MailService {
 	 * @param html - The HTML content of the email notification.
 	 * @returns A promise that resolves when the email is successfully sent.
 	 */
-	private sendMail(email: string, subject: string, html: string) {
-		return this.mailerService.sendMail({
+	private async sendMail(
+		email: string,
+		subject: string,
+		html: string
+	): Promise<void> {
+		await this.mailerService.sendMail({
 			to: email,
 			subject,
 			html
@@ -73,7 +83,10 @@ export class MailService {
 	 * @param newEmail - The new email address to confirm.
 	 * @param token - The email-change confirmation token.
 	 */
-	public async sendEmailChangeConfirmation(newEmail: string, token: string) {
+	public async sendEmailChangeConfirmation(
+		newEmail: string,
+		token: string
+	): Promise<void> {
 		const apiUrl = this.configService.getOrThrow<string>('APPLICATION_URL')
 		const confirmUrl = `${apiUrl}/users/email-change/confirm/${token}`
 		const html = await render(EmailChangeTemplate({ confirmUrl }))
@@ -87,9 +100,16 @@ export class MailService {
 	 * @param password - The temporary password.
 	 * @returns A promise that resolves when the email is successfully sent.
 	 */
-	public async sendTempPassword(email: string, password: string) {
+	public async sendTempPassword(
+		email: string,
+		password: string
+	): Promise<void> {
 		const html = await render(TempPasswordTemplate({ password }))
 
-		return this.sendMail(email, 'Тимчасовий пароль для входу в MyKPEFK', html)
+		return this.sendMail(
+			email,
+			'Тимчасовий пароль для входу в MyKPEFK',
+			html
+		)
 	}
 }

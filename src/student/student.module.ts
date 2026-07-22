@@ -7,9 +7,9 @@ import { StudentController } from './student.controller'
 import { StudentService } from './student.service'
 
 @Module({
-  imports: [UserModule, GoogleWorkspaceModule],
-  controllers: [StudentController],
-  providers: [StudentService],
-  exports: [StudentService],
+	imports: [UserModule, GoogleWorkspaceModule],
+	controllers: [StudentController],
+	providers: [StudentService],
+	exports: [StudentService]
 })
 export class StudentModule {}

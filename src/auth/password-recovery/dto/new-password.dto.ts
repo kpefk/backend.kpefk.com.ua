@@ -6,7 +6,6 @@ export class NewPasswordDto {
 		description: 'Новий пароль користувача',
 		example: 'newPassword123'
 	})
-	
 	@IsString({ message: 'Пароль повинен бути рядком.' })
 	@MinLength(6, { message: 'Пароль повинен містити не менше 6 символів.' })
 	@IsNotEmpty({ message: 'Поле новий пароль не може бути порожнім.' })

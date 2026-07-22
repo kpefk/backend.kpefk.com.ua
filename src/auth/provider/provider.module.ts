@@ -2,12 +2,12 @@ import { DynamicModule, Module } from '@nestjs/common'
 
 import { UserModule } from '@/user/user.module'
 
+import { OAuthController } from './oauth.controller'
 import {
 	ProviderOptionsSymbol,
 	TypeAsyncOptions,
 	TypeOptions
 } from './provider.constants'
-import { OAuthController } from './oauth.controller'
 import { ProviderService } from './provider.service'
 
 /**
@@ -22,9 +22,9 @@ export class ProviderModule {
 			controllers: [OAuthController],
 			providers: [
 				{ useValue: options, provide: ProviderOptionsSymbol },
-				ProviderService,
+				ProviderService
 			],
-			exports: [ProviderService],
+			exports: [ProviderService]
 		}
 	}
 
@@ -37,11 +37,11 @@ export class ProviderModule {
 				{
 					useFactory: options.useFactory,
 					provide: ProviderOptionsSymbol,
-					inject: options.inject,
+					inject: options.inject
 				},
-				ProviderService,
+				ProviderService
 			],
-			exports: [ProviderService],
+			exports: [ProviderService]
 		}
 	}
 }

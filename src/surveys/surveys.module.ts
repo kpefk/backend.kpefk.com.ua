@@ -7,8 +7,8 @@ import { SurveysController } from './surveys.controller'
 import { SurveysService } from './surveys.service'
 
 @Module({
-  imports: [PrismaModule, UserModule],
-  controllers: [SurveysController],
-  providers: [SurveysService],
+	imports: [PrismaModule, UserModule],
+	controllers: [SurveysController],
+	providers: [SurveysService]
 })
 export class SurveysModule {}

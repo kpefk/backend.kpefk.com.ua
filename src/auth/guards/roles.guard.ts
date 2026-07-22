@@ -18,7 +18,7 @@ export class RolesGuard implements CanActivate {
 	 * Constructor of the roles guard.
 	 * @param reflector - Reflector for getting metadata.
 	 */
-	public constructor(private readonly reflector: Reflector) { }
+	public constructor(private readonly reflector: Reflector) {}
 
 	/**
 	 * Checks if the user has the required roles to access the resource.
@@ -33,7 +33,9 @@ export class RolesGuard implements CanActivate {
 		])
 		if (!roles) return true
 
-		const request = context.switchToHttp().getRequest<Request & { user?: { role: UserRole } }>()
+		const request = context
+			.switchToHttp()
+			.getRequest<Request & { user?: { role: UserRole } }>()
 
 		if (!request.user) {
 			throw new ForbiddenException('Користувач не автентифікований.')

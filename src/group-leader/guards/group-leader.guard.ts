@@ -1,8 +1,8 @@
 import {
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-  Injectable,
+	CanActivate,
+	ExecutionContext,
+	ForbiddenException,
+	Injectable
 } from '@nestjs/common'
 import { UserRole } from '@prisma/client'
 import type { Request } from 'express'
@@ -10,10 +10,10 @@ import type { Request } from 'express'
 import { PrismaService } from '@/prisma/prisma.service'
 
 const ADMIN_ROLES: UserRole[] = [
-  UserRole.HEAD_OF_DEPARTMENT,
-  UserRole.DEPUTY_DIRECTOR,
-  UserRole.DIRECTOR,
-  UserRole.ADMINISTRATOR,
+	UserRole.HEAD_OF_DEPARTMENT,
+	UserRole.DEPUTY_DIRECTOR,
+	UserRole.DIRECTOR,
+	UserRole.ADMINISTRATOR
 ]
 
 /**
@@ -25,37 +25,40 @@ const ADMIN_ROLES: UserRole[] = [
  */
 @Injectable()
 export class GroupLeaderGuard implements CanActivate {
-  public constructor(private readonly prisma: PrismaService) {}
+	public constructor(private readonly prisma: PrismaService) {}
 
-  public async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<Request & { user: { id: string; role: UserRole } }>()
-    const user = req.user
+	public async canActivate(context: ExecutionContext): Promise<boolean> {
+		const req = context
+			.switchToHttp()
+			.getRequest<Request & { user: { id: string; role: UserRole } }>()
+		const user = req.user
 
-    if (ADMIN_ROLES.includes(user.role)) return true
+		if (ADMIN_ROLES.includes(user.role)) return true
 
-    const groupId = Array.isArray(req.params['groupId'])
-      ? req.params['groupId'][0]
-      : req.params['groupId']
-    if (!groupId) throw new ForbiddenException('groupId відсутній у маршруті.')
+		const groupId = Array.isArray(req.params['groupId'])
+			? req.params['groupId'][0]
+			: req.params['groupId']
+		if (!groupId)
+			throw new ForbiddenException('groupId відсутній у маршруті.')
 
-    const teacher = await this.prisma.teacher.findUnique({
-      where: { userId: user.id },
-      select: { id: true },
-    })
+		const teacher = await this.prisma.teacher.findUnique({
+			where: { userId: user.id },
+			select: { id: true }
+		})
 
-    if (!teacher) {
-      throw new ForbiddenException('Ви не є педагогічним працівником.')
-    }
+		if (!teacher) {
+			throw new ForbiddenException('Ви не є педагогічним працівником.')
+		}
 
-    const group = await this.prisma.group.findFirst({
-      where: { id: groupId, curatorId: teacher.id },
-      select: { id: true },
-    })
+		const group = await this.prisma.group.findFirst({
+			where: { id: groupId, curatorId: teacher.id },
+			select: { id: true }
+		})
 
-    if (!group) {
-      throw new ForbiddenException('Ви не є керівником цієї групи.')
-    }
+		if (!group) {
+			throw new ForbiddenException('Ви не є керівником цієї групи.')
+		}
 
-    return true
-  }
+		return true
+	}
 }

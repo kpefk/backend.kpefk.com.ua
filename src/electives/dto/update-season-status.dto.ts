@@ -1,7 +1,7 @@
-import { IsEnum } from 'class-validator'
 import { CatalogStatus } from '@prisma/client'
+import { IsEnum } from 'class-validator'
 
 export class UpdateSeasonStatusDto {
-  @IsEnum(CatalogStatus)
-  catalogStatus!: CatalogStatus
+	@IsEnum(CatalogStatus)
+	catalogStatus!: CatalogStatus
 }

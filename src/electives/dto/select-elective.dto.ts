@@ -1,13 +1,13 @@
 import { IsInt, IsString, Min } from 'class-validator'
 
 export class SelectElectiveDto {
-  @IsString()
-  electiveId!: string
+	@IsString()
+	electiveId!: string
 
-  @IsInt()
-  @Min(1)
-  semester!: number
+	@IsInt()
+	@Min(1)
+	semester!: number
 
-  @IsString()
-  academicYear!: string
+	@IsString()
+	academicYear!: string
 }

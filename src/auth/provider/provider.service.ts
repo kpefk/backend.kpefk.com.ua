@@ -15,7 +15,7 @@ export class ProviderService implements OnModuleInit {
 	 */
 	public constructor(
 		@Inject(ProviderOptionsSymbol) private readonly options: TypeOptions
-	) { }
+	) {}
 
 	/**
 	 * Ініціалізує модуль.

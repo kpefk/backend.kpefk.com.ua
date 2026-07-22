@@ -25,18 +25,18 @@ export class AuthProviderGuard implements CanActivate {
 	 * @returns true if the provider is found; otherwise throws NotFoundException.
 	 * @throws NotFoundException if the provider is not found.
 	 */
-  public canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<Request>()
-    const provider = request.params.provider as string
+	public canActivate(context: ExecutionContext): boolean {
+		const request = context.switchToHttp().getRequest<Request>()
+		const provider = request.params.provider as string
 
-    const providerInstance = this.providerService.findByService(provider)
+		const providerInstance = this.providerService.findByService(provider)
 
-    if (!providerInstance) {
-      throw new NotFoundException(
-        `Провайдер "${provider}" не знайдений. Будь ласка, перевірте правильність введених даних.`
-      )
-    }
+		if (!providerInstance) {
+			throw new NotFoundException(
+				`Провайдер "${provider}" не знайдений. Будь ласка, перевірте правильність введених даних.`
+			)
+		}
 
-    return true
-  }
+		return true
+	}
 }

@@ -1,11 +1,11 @@
-import { IsString, IsNotEmpty } from 'class-validator'
+import { IsNotEmpty, IsString } from 'class-validator'
 
 export class StudentSelectDto {
-  @IsString()
-  @IsNotEmpty()
-  seasonId!: string
+	@IsString()
+	@IsNotEmpty()
+	seasonId!: string
 
-  @IsString()
-  @IsNotEmpty()
-  componentId!: string
+	@IsString()
+	@IsNotEmpty()
+	componentId!: string
 }

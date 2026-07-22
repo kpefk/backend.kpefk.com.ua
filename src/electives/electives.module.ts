@@ -8,9 +8,9 @@ import { ElectivesController } from './electives.controller'
 import { ElectivesService } from './electives.service'
 
 @Module({
-  imports: [UserModule],
-  controllers: [ElectivesController, ElectiveSeasonsController],
-  providers: [ElectivesService, ElectiveSeasonsService],
-  exports: [ElectivesService, ElectiveSeasonsService],
+	imports: [UserModule],
+	controllers: [ElectivesController, ElectiveSeasonsController],
+	providers: [ElectivesService, ElectiveSeasonsService],
+	exports: [ElectivesService, ElectiveSeasonsService]
 })
 export class ElectivesModule {}

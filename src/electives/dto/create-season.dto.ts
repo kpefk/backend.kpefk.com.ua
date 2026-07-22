@@ -1,11 +1,11 @@
-import { IsString, IsNotEmpty } from 'class-validator'
+import { IsNotEmpty, IsString } from 'class-validator'
 
 export class CreateSeasonDto {
-  @IsString()
-  @IsNotEmpty()
-  blockId!: string
+	@IsString()
+	@IsNotEmpty()
+	blockId!: string
 
-  @IsString()
-  @IsNotEmpty()
-  academicYear!: string
+	@IsString()
+	@IsNotEmpty()
+	academicYear!: string
 }

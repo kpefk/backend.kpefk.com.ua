@@ -1,6 +1,6 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger'
 
 export class PersonRequestMotivationLetterGetResponseDto {
-  @ApiPropertyOptional({ description: 'Текст мотиваційного листа' })
-  motivationLetterText?: string | null;
+	@ApiPropertyOptional({ description: 'Текст мотиваційного листа' })
+	motivationLetterText?: string | null
 }

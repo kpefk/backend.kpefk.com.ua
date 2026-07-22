@@ -9,11 +9,16 @@ import { IsBoolean, IsOptional } from 'class-validator'
  * щоб уникнути зміни пошти без верифікації.
  */
 export class UpdateUserDto {
-  /**
-   * Прапорець, що вказує, чи включена двофакторна аутентифікація.
-   */
-  @ApiPropertyOptional({ description: 'Увімкнути/вимкнути двофакторну автентифікацію', example: false })
-  @IsOptional()
-  @IsBoolean({ message: 'isTwoFactorEnabled повинно бути булевим значенням.' })
-  isTwoFactorEnabled?: boolean
+	/**
+	 * Прапорець, що вказує, чи включена двофакторна аутентифікація.
+	 */
+	@ApiPropertyOptional({
+		description: 'Увімкнути/вимкнути двофакторну автентифікацію',
+		example: false
+	})
+	@IsOptional()
+	@IsBoolean({
+		message: 'isTwoFactorEnabled повинно бути булевим значенням.'
+	})
+	isTwoFactorEnabled?: boolean
 }

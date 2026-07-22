@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "nestjs-best-practices": {
+      "source": "xirothedev/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nestjs-best-practices/SKILL.md",
+      "computedHash": "d3b304104f3b402889040e13cd46e017ffff7ea95c90d19910d31bdbbebf7bec"
+    }
+  }
+}

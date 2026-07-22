@@ -11,15 +11,17 @@ import type { PrismaService } from '@/prisma/prisma.service'
  * (IDOR-захист), а фронтенд може передавати як Student.id, так і User.id.
  */
 export async function resolveOwnStudentId(
-  prisma: PrismaService,
-  userId: string,
+	prisma: PrismaService,
+	userId: string
 ): Promise<string> {
-  const student = await prisma.student.findUnique({
-    where: { userId },
-    select: { id: true },
-  })
-  if (!student) {
-    throw new ForbiddenException('Обліковий запис не привʼязано до картки студента.')
-  }
-  return student.id
+	const student = await prisma.student.findUnique({
+		where: { userId },
+		select: { id: true }
+	})
+	if (!student) {
+		throw new ForbiddenException(
+			'Обліковий запис не привʼязано до картки студента.'
+		)
+	}
+	return student.id
 }

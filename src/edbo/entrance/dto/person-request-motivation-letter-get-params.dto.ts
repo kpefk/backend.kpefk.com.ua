@@ -1,8 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger'
+import { IsInt } from 'class-validator'
 
 export class PersonRequestMotivationLetterGetParamsDto {
-  @ApiProperty({ description: 'Код заяви' })
-  @IsInt()
-  personRequestId!: number;
+	@ApiProperty({ description: 'Код заяви' })
+	@IsInt()
+	personRequestId!: number
 }
