@@ -328,18 +328,23 @@ export class AdmissionSyncService {
     return max + 1
   }
 
+
   /**
-   * Для кожної нової особи із заявою на заочну КП тягне з ЄДЕБО документ про освіту
+   * Для кожної нової особи із заявою тягне з ЄДЕБО документ про освіту
    * (свідоцтво про базову / атестат про повну загальну середню освіту) і зберігає його.
-   * Один HTTP-виклик на особу; повторно не смикає (мітка `entryEduDocFetchedAt`).
-   * Це ЄДЕБО-читання, тож виконується і в dev.
+   * Групування — по парі (personCodeU, educationBaseName), бо одна особа може подати заяви
+   * з різною основою вступу (базова vs повна середня) — раніше це змішувалось.
+   * Один HTTP-виклик на унікального personCodeU (кешується), повторно не смикає
+   * (мітка `entryEduDocFetchedAt`). Це ЄДЕБО-читання, тож виконується і в dev.
    */
   public async fetchEntryEducationDocs(admissionYear: number): Promise<EntryEducationDocResult> {
     const pending = await this.prisma.admissionApplication.findMany({
       where: {
         admissionYear,
         entryEduDocFetchedAt: null,
-        offer: { educationFormName: { contains: 'Заочна', mode: 'insensitive' } },
+        // Якщо базова середня освіта трапляється і на денній формі — фільтр за формою
+        // прибрано. За потреби поверніть:
+        // offer: { educationFormName: { contains: 'Заочна', mode: 'insensitive' } },
       },
       select: {
         id: true,
@@ -348,18 +353,24 @@ export class AdmissionSyncService {
       },
     })
 
-    // Групуємо по особі (personCodeU) — один виклик ЄДЕБО на особу.
-    const byPerson = new Map<string, { appIds: string[]; base: string | null }>()
+    // Групуємо по (personCodeU, educationBaseName) — щоб не змішувати різні основи вступу
+    // однієї й тієї ж особи (напр. одночасно "Базова" і "Повна" загальна середня).
+    const byGroup = new Map<string, { appIds: string[]; personCodeU: string; base: string | null }>()
+    // Кешуємо сирі документи на особу, щоб не смикати ЄДЕБО повторно для тієї ж людини.
+    const docsCacheByPerson = new Map<string, EdboEntrantDoc[] | null>()
     const noCodeIds: string[] = []
+
     for (const a of pending) {
       if (!a.personCodeU) {
         noCodeIds.push(a.id)
         continue
       }
-      let g = byPerson.get(a.personCodeU)
+      const base = a.offer.educationBaseName ?? null
+      const key = `${a.personCodeU}::${base ?? ''}`
+      let g = byGroup.get(key)
       if (!g) {
-        g = { appIds: [], base: a.offer.educationBaseName }
-        byPerson.set(a.personCodeU, g)
+        g = { appIds: [], personCodeU: a.personCodeU, base }
+        byGroup.set(key, g)
       }
       g.appIds.push(a.id)
     }
@@ -368,17 +379,37 @@ export class AdmissionSyncService {
     let notFound = 0
     const now = new Date()
 
-    for (const [personCodeU, g] of byPerson) {
-      let doc: EdboEntrantDoc | null = null
-      try {
-        const docs = (await this.edbo.getPersonDocumentsSync(
-          personCodeU,
-        )) as unknown as EdboEntrantDoc[]
-        doc = this.pickSecondaryEducationDoc(docs, g.base)
-      } catch (err) {
-        // Лишаємо fetchedAt null → повторимо наступного разу.
-        this.logger.warn(`Документи особи ${personCodeU} недоступні: ${String(err)}`)
-        continue
+    for (const [, g] of byGroup) {
+      let docs: EdboEntrantDoc[] | null | undefined = docsCacheByPerson.get(g.personCodeU)
+
+      if (docs === undefined) {
+        try {
+          docs = (await this.edbo.getPersonDocumentsSync(
+            g.personCodeU,
+          )) as unknown as EdboEntrantDoc[]
+          docsCacheByPerson.set(g.personCodeU, docs)
+
+          // Діагностика: лишаємо на рівні debug, щоб бачити реальну форму даних із ЄДЕБО
+          // (типова причина "не підтягує диплом" — невідповідність назви типу документа).
+          this.logger.debug(
+            `Документи особи ${g.personCodeU} (сирі, ${docs.length} шт.): ${JSON.stringify(docs)}`,
+          )
+        } catch (err) {
+          // Лишаємо fetchedAt null → повторимо наступного разу.
+          this.logger.warn(`Документи особи ${g.personCodeU} недоступні: ${String(err)}`)
+          docsCacheByPerson.set(g.personCodeU, null)
+          continue
+        }
+      }
+
+      if (docs === null) continue
+
+      const doc = this.pickSecondaryEducationDoc(docs, g.base)
+
+      if (!doc) {
+        this.logger.warn(
+          `Особа ${g.personCodeU}: документ про середню освіту (база="${g.base ?? '—'}") не знайдено серед ${docs.length} документів`,
+        )
       }
 
       const data = doc
@@ -409,9 +440,9 @@ export class AdmissionSyncService {
       })
     }
 
-    if (byPerson.size > 0 || noCodeIds.length > 0) {
+    if (byGroup.size > 0 || noCodeIds.length > 0) {
       this.logger.log(
-        `Документи про освіту (заочні) ${admissionYear}: знайдено=${fetched} без документа=${notFound} без коду=${noCodeIds.length}`,
+        `Документи про освіту ${admissionYear}: знайдено=${fetched} без документа=${notFound} без коду=${noCodeIds.length}`,
       )
     }
     return { admissionYear, fetched, notFound, skipped: noCodeIds.length }
@@ -419,18 +450,21 @@ export class AdmissionSyncService {
 
   /**
    * Обирає документ про освіту (свідоцтво/атестат про середню освіту), що відповідає основі
-   * вступу КП: «Повна…» → про повну загальну середню; «Базова…» → про базову середню.
+   * вступу КП: "Повна..." -> про повну загальну середню; "Базова..." -> про базову середню.
+   * truthy() розширено підтримкою рядкового "1" — ЄДЕБО подекуди повертає булеві поля рядком.
    */
   private pickSecondaryEducationDoc(
     docs: EdboEntrantDoc[],
     educationBaseName: string | null,
   ): EdboEntrantDoc | null {
-    const truthy = (v: unknown): boolean => v === true || v === 1
+    const truthy = (v: unknown): boolean => v === true || v === 1 || v === '1'
+    const falsy = (v: unknown): boolean => v === true || v === 1 || v === '1'
+
     const secondary = docs.filter(
       (x) =>
         truthy(x.isEntrantDocument) &&
-        !x.isCancelled &&
-        !x.isDeleted &&
+        !falsy(x.isCancelled) &&
+        !falsy(x.isDeleted) &&
         !!x.personDocumentTypeName &&
         /середн/i.test(x.personDocumentTypeName),
     )
@@ -439,6 +473,7 @@ export class AdmissionSyncService {
     const base = (educationBaseName ?? '').toLowerCase()
     const wantFull = base.includes('повн')
     const wantBasic = base.includes('базов')
+
     const preferred = secondary.find((x) => {
       const name = x.personDocumentTypeName!.toLowerCase()
       if (wantFull) return name.includes('повн')
@@ -456,6 +491,7 @@ export class AdmissionSyncService {
       )
     )
   }
+
 
   /**
    * Повний знімок року: КП + заяви по кожній КП (усі статуси). Зберігає ПД —
