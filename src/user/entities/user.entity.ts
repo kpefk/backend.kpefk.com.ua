@@ -63,6 +63,7 @@ export class UserEntity {
 	@ApiProperty({ description: 'Дані викладача', required: false })
 	@Expose()
 	teacher?: {
+		id: string
 		lastName: string | null
 		firstName: string | null
 		middleName: string | null

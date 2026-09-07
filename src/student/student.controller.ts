@@ -4,7 +4,8 @@ import {
 	HttpCode,
 	HttpStatus,
 	Param,
-	Post
+	Post,
+	Query
 } from '@nestjs/common'
 import {
 	ApiBearerAuth,
@@ -18,6 +19,8 @@ import { Student, UserRole } from '@prisma/client'
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { ProvisionResult } from '@/libs/google-workspace/google-workspace.service'
 
+import { StudentListItem } from './student.constants'
+import { StudentListQueryDto } from './dto/student-list-query.dto'
 import { BulkProvisionResult, StudentService } from './student.service'
 
 @ApiTags('Студенти')
@@ -33,13 +36,17 @@ import { BulkProvisionResult, StudentService } from './student.service'
 export class StudentController {
 	public constructor(private readonly studentService: StudentService) {}
 
-	@ApiOperation({ summary: 'Отримати список студентів' })
+	@ApiOperation({
+		summary: 'Отримати список студентів (без ПДн; фільтр за станом навчання)'
+	})
 	@ApiResponse({ status: 200, description: 'Список студентів' })
 	@ApiResponse({ status: 401, description: 'Не авторизований' })
 	@Get()
 	@HttpCode(HttpStatus.OK)
-	public async findAll(): Promise<Student[]> {
-		return this.studentService.findAll()
+	public async findAll(
+		@Query() query: StudentListQueryDto
+	): Promise<StudentListItem[]> {
+		return this.studentService.findAll(query.status)
 	}
 
 	@ApiOperation({ summary: 'Отримати студента за ID' })

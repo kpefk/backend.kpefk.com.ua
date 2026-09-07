@@ -101,6 +101,8 @@ export class AdmissionApplicationRowDto {
   entryEduDocSeries!: string | null
   entryEduDocNumber!: string | null
   entryEduDocYearEnd!: number | null
+  /** Дата видачі документа про освіту (ISO 8601) */
+  entryEduDocDateGet!: string | null
 }
 
 /** Налаштування КП для авто-реєстрації (рядок таблиці на сторінці налаштувань). */

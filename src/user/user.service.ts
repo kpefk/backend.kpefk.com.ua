@@ -47,6 +47,7 @@ export class UserService {
 				},
 				teacher: {
 					select: {
+						id: true,
 						lastName: true,
 						firstName: true,
 						middleName: true,
@@ -82,6 +83,7 @@ export class UserService {
 				},
 				teacher: {
 					select: {
+						id: true,
 						lastName: true,
 						firstName: true,
 						middleName: true,
@@ -342,6 +344,7 @@ export class UserService {
 				},
 				teacher: {
 					select: {
+						id: true,
 						lastName: true,
 						firstName: true,
 						middleName: true,

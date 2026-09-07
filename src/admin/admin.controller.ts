@@ -21,7 +21,9 @@ import { Authorization } from '@/auth/decorators/auth.decorator'
 import { UserEntity } from '@/user/entities/user.entity'
 
 import { AdminService } from './admin.service'
+import { AdminDashboardStatsDto } from './dto/admin-dashboard-stats.dto'
 import { CreateUserDto } from './dto/create-user.dto'
+import { LinkTeacherDto } from './dto/link-teacher.dto'
 import { UpdateUserByAdminDto } from './dto/update-user-by-admin.dto'
 
 /**
@@ -37,6 +39,18 @@ export class AdminController {
 	 * @param adminService - Сервіс для управління користувачами.
 	 */
 	public constructor(private readonly adminService: AdminService) {}
+
+	/**
+	 * Зведені лічильники для головної сторінки адміністратора.
+	 * @returns Кількості акаунтів, студентів, викладачів і груп.
+	 */
+	@ApiOperation({ summary: 'Зведена статистика для головної (адміністратор)' })
+	@ApiResponse({ status: 200, description: 'Лічильники системи' })
+	@Get('dashboard-stats')
+	@HttpCode(HttpStatus.OK)
+	public async dashboardStats(): Promise<AdminDashboardStatsDto> {
+		return this.adminService.getDashboardStats()
+	}
 
 	/**
 	 * Повертає список всіх користувачів.
@@ -98,6 +112,26 @@ export class AdminController {
 		@Body() dto: UpdateUserByAdminDto
 	): Promise<UserEntity> {
 		return new UserEntity(await this.adminService.update(id, dto))
+	}
+
+	/**
+	 * Прив'язує або відв'язує картку викладача для акаунту.
+	 * @param id - ID користувача.
+	 * @param dto - `teacherId` картки або null для відв'язки.
+	 * @returns Оновлений користувач.
+	 */
+	@ApiOperation({ summary: "Прив'язати / відв'язати викладача до акаунту" })
+	@ApiResponse({ status: 200, description: 'Оновлений користувач' })
+	@ApiResponse({ status: 400, description: "Роль не підтримує прив'язку" })
+	@ApiResponse({ status: 404, description: 'Користувач не знайдений' })
+	@ApiResponse({ status: 409, description: "Викладач вже прив'язаний" })
+	@Patch('users/:id/teacher')
+	@HttpCode(HttpStatus.OK)
+	public async linkTeacher(
+		@Param('id') id: string,
+		@Body() dto: LinkTeacherDto
+	): Promise<UserEntity> {
+		return new UserEntity(await this.adminService.linkTeacher(id, dto))
 	}
 
 	/**

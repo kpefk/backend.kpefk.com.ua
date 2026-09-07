@@ -383,6 +383,7 @@ export class AdmissionsService {
       entryEduDocSeries: a.entryEduDocSeries,
       entryEduDocNumber: a.entryEduDocNumber,
       entryEduDocYearEnd: a.entryEduDocYearEnd,
+      entryEduDocDateGet: a.entryEduDocDateGet ? a.entryEduDocDateGet.toISOString() : null,
     }))
   }
 

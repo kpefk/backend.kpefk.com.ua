@@ -1,11 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
-import { Student } from '@prisma/client'
+import { Prisma, Student } from '@prisma/client'
 
 import {
 	GoogleWorkspaceService,
 	ProvisionResult
 } from '@/libs/google-workspace/google-workspace.service'
 import { PrismaService } from '@/prisma/prisma.service'
+
+import {
+	STUDENT_LIST_SELECT,
+	StudentListItem
+} from './student.constants'
+import { StudentListStatus } from './dto/student-list-query.dto'
 
 export interface BulkProvisionResult {
 	provisioned: number
@@ -21,10 +27,39 @@ export class StudentService {
 		private readonly workspace: GoogleWorkspaceService
 	) {}
 
-	public async findAll(): Promise<Student[]> {
+	/**
+	 * Список студентів у полегшеній проекції (без ПДн) з фільтром за станом навчання.
+	 * @param status - `active` (навчається), `inactive` або `all` (типово).
+	 */
+	public async findAll(
+		status: StudentListStatus = 'all'
+	): Promise<StudentListItem[]> {
 		return this.prisma.student.findMany({
+			where: this.buildStatusWhere(status),
+			select: STUDENT_LIST_SELECT,
 			orderBy: [{ personFIO: 'asc' }]
 		})
+	}
+
+	/**
+	 * «Навчається» = не відрахований, не в академвідпустці і строк навчання ще не сплив.
+	 * Дзеркалить `studentStatus()` на клієнті.
+	 */
+	private buildStatusWhere(
+		status: StudentListStatus
+	): Prisma.StudentWhereInput {
+		if (status === 'all') return {}
+
+		const studying: Prisma.StudentWhereInput = {
+			expelEducationTypeName: null,
+			academicLeaveTypeName: null,
+			OR: [
+				{ educationDateEnd: null },
+				{ educationDateEnd: { gte: new Date() } }
+			]
+		}
+
+		return status === 'active' ? studying : { NOT: studying }
 	}
 
 	public async findById(id: string): Promise<Student> {

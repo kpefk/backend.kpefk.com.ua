@@ -3,14 +3,17 @@ import {
 	ConflictException,
 	Injectable
 } from '@nestjs/common'
-import { UserRole } from '@prisma/client'
+import { Prisma, UserRole } from '@prisma/client'
 import { randomBytes } from 'crypto'
 
 import { MailService } from '@/libs/mail/mail.service'
 import { PrismaService } from '@/prisma/prisma.service'
 import { UserService } from '@/user/user.service'
 
+import { TEACHER_LINKABLE_ROLES } from './admin.constants'
+import { AdminDashboardStatsDto } from './dto/admin-dashboard-stats.dto'
 import { CreateUserDto } from './dto/create-user.dto'
+import { LinkTeacherDto } from './dto/link-teacher.dto'
 import { UpdateUserByAdminDto } from './dto/update-user-by-admin.dto'
 
 /**
@@ -147,6 +150,138 @@ export class AdminService {
 		await this.userService.findById(id)
 
 		return this.userService.updateByAdmin(id, dto)
+	}
+
+	/**
+	 * Зведені лічильники для головної сторінки адміністратора.
+	 * Лише агрегати (count/groupBy) — списки не вивантажуються.
+	 */
+	public async getDashboardStats(): Promise<AdminDashboardStatsDto> {
+		// «Навчається» — та сама умова, що й у списку студентів.
+		const studying: Prisma.StudentWhereInput = {
+			expelEducationTypeName: null,
+			academicLeaveTypeName: null,
+			OR: [
+				{ educationDateEnd: null },
+				{ educationDateEnd: { gte: new Date() } }
+			]
+		}
+
+		const [
+			usersTotal,
+			usersActive,
+			usersNeverLoggedIn,
+			usersByRoleRaw,
+			studentsTotal,
+			studentsStudying,
+			studentsWithAccount,
+			teachersTotal,
+			teachersActive,
+			teachersWithAccount,
+			groupsTotal,
+			groupsArchived,
+			groupsWithoutCurator
+		] = await Promise.all([
+			this.prisma.user.count(),
+			this.prisma.user.count({ where: { isActive: true } }),
+			this.prisma.user.count({ where: { isFirstLogin: true } }),
+			this.prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
+			this.prisma.student.count(),
+			this.prisma.student.count({ where: studying }),
+			this.prisma.student.count({ where: { userId: { not: null } } }),
+			this.prisma.teacher.count(),
+			this.prisma.teacher.count({ where: { isActive: true } }),
+			this.prisma.teacher.count({ where: { userId: { not: null } } }),
+			this.prisma.group.count(),
+			this.prisma.group.count({ where: { archivedAt: { not: null } } }),
+			this.prisma.group.count({
+				where: { curatorId: null, archivedAt: null }
+			})
+		])
+
+		const byRole = Object.fromEntries(
+			Object.values(UserRole).map(role => [role, 0])
+		) as Record<UserRole, number>
+		for (const row of usersByRoleRaw) {
+			byRole[row.role] = row._count._all
+		}
+
+		return {
+			users: {
+				total: usersTotal,
+				active: usersActive,
+				inactive: usersTotal - usersActive,
+				neverLoggedIn: usersNeverLoggedIn,
+				byRole
+			},
+			students: {
+				total: studentsTotal,
+				studying: studentsStudying,
+				withAccount: studentsWithAccount
+			},
+			teachers: {
+				total: teachersTotal,
+				active: teachersActive,
+				withAccount: teachersWithAccount
+			},
+			groups: {
+				total: groupsTotal,
+				active: groupsTotal - groupsArchived,
+				archived: groupsArchived,
+				withoutCurator: groupsWithoutCurator
+			}
+		}
+	}
+
+	/**
+	 * Прив'язує картку викладача (ЄДЕБО) до акаунту або відв'язує її (`teacherId: null`).
+	 * Зв'язок 1:1 — попередня картка цього акаунту звільняється автоматично.
+	 *
+	 * @param id - ID користувача.
+	 * @param dto - Картка викладача або null.
+	 * @returns Оновлений користувач із профілем викладача.
+	 * @throws BadRequestException - Роль не підтримує зв'язок або викладача не знайдено.
+	 * @throws ConflictException - Викладач уже прив'язаний до іншого акаунту.
+	 */
+	public async linkTeacher(id: string, dto: LinkTeacherDto) {
+		const user = await this.userService.findById(id)
+
+		if (!TEACHER_LINKABLE_ROLES.includes(user.role)) {
+			throw new BadRequestException(
+				"Прив'язка викладача доступна лише для ролей: викладач, завідувач відділення, заступник директора, директор, адміністратор."
+			)
+		}
+
+		if (dto.teacherId) {
+			const teacher = await this.prisma.teacher.findUnique({
+				where: { id: dto.teacherId },
+				select: { id: true, userId: true }
+			})
+			if (!teacher) {
+				throw new BadRequestException('Викладача не знайдено.')
+			}
+			if (teacher.userId && teacher.userId !== id) {
+				throw new ConflictException(
+					"Цей викладач вже прив'язаний до іншого акаунту."
+				)
+			}
+		}
+
+		await this.prisma.$transaction(async tx => {
+			// Звільняємо попередню картку акаунту (зв'язок 1:1 — Teacher.userId @unique).
+			await tx.teacher.updateMany({
+				where: { userId: id },
+				data: { userId: null }
+			})
+			if (dto.teacherId) {
+				await tx.teacher.update({
+					where: { id: dto.teacherId },
+					data: { userId: id }
+				})
+			}
+		})
+
+		return this.userService.findById(id)
 	}
 
 	/**
