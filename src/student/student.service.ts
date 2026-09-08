@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Prisma, Student } from '@prisma/client'
 
 import {
@@ -7,21 +7,25 @@ import {
 } from '@/libs/google-workspace/google-workspace.service'
 import { PrismaService } from '@/prisma/prisma.service'
 
-import {
-	STUDENT_LIST_SELECT,
-	StudentListItem
-} from './student.constants'
 import { StudentListStatus } from './dto/student-list-query.dto'
+import { STUDENT_LIST_SELECT, StudentListItem } from './student.constants'
 
 export interface BulkProvisionResult {
 	provisioned: number
 	skipped: number
 	failed: number
 	total: number
+	failures: Array<{
+		studentId: string
+		personFIO: string
+		message: string
+	}>
 }
 
 @Injectable()
 export class StudentService {
+	private readonly logger = new Logger(StudentService.name)
+
 	public constructor(
 		private readonly prisma: PrismaService,
 		private readonly workspace: GoogleWorkspaceService
@@ -85,7 +89,7 @@ export class StudentService {
 			personFIO: student.personFIO,
 			birthday: student.birthday,
 			fullSpecialityName: student.fullSpecialityName,
-			licenseYear: student.licenseYear
+			educationDateBegin: student.educationDateBegin
 		})
 
 		const result = await this.workspace.provisionAccount(email, {
@@ -93,7 +97,7 @@ export class StudentService {
 			personFIO: student.personFIO,
 			birthday: student.birthday,
 			fullSpecialityName: student.fullSpecialityName,
-			licenseYear: student.licenseYear
+			educationDateBegin: student.educationDateBegin
 		})
 
 		await this.prisma.student.update({
@@ -105,19 +109,24 @@ export class StudentService {
 	}
 
 	/**
-	 * Масове створення акаунтів для всіх студентів без corporateEmail.
+	 * Масове створення акаунтів для переданих студентів без corporateEmail.
 	 * Обробляє по одному, щоб не перевантажувати Admin API.
 	 */
-	public async provisionAllEmails(): Promise<BulkProvisionResult> {
+	public async provisionAllEmails(
+		studentIds: string[]
+	): Promise<BulkProvisionResult> {
 		const students = await this.prisma.student.findMany({
-			where: { corporateEmail: null },
+			where: {
+				id: { in: studentIds },
+				corporateEmail: null
+			},
 			select: {
 				id: true,
 				personNameEn: true,
 				personFIO: true,
 				birthday: true,
 				fullSpecialityName: true,
-				licenseYear: true
+				educationDateBegin: true
 			}
 		})
 
@@ -125,7 +134,8 @@ export class StudentService {
 			provisioned: 0,
 			skipped: 0,
 			failed: 0,
-			total: students.length
+			total: students.length,
+			failures: []
 		}
 
 		for (const student of students) {
@@ -143,8 +153,18 @@ export class StudentService {
 				})
 
 				created ? result.provisioned++ : result.skipped++
-			} catch {
+			} catch (error: unknown) {
 				result.failed++
+				const message =
+					error instanceof Error ? error.message : 'Невідома помилка'
+				result.failures.push({
+					studentId: student.id,
+					personFIO: student.personFIO,
+					message
+				})
+				this.logger.error(
+					`Bulk email provisioning failed for ${student.id} (${student.personFIO}): ${message}`
+				)
 			}
 		}
 
@@ -162,7 +182,7 @@ export class StudentService {
 				personFIO: student.personFIO,
 				birthday: student.birthday,
 				fullSpecialityName: student.fullSpecialityName,
-				licenseYear: student.licenseYear
+				educationDateBegin: student.educationDateBegin
 			})
 		}))
 	}

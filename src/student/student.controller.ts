@@ -1,4 +1,5 @@
 import {
+	Body,
 	Controller,
 	Get,
 	HttpCode,
@@ -19,8 +20,9 @@ import { Student, UserRole } from '@prisma/client'
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { ProvisionResult } from '@/libs/google-workspace/google-workspace.service'
 
-import { StudentListItem } from './student.constants'
+import { BulkProvisionEmailsDto } from './dto/bulk-provision-emails.dto'
 import { StudentListQueryDto } from './dto/student-list-query.dto'
+import { StudentListItem } from './student.constants'
 import { BulkProvisionResult, StudentService } from './student.service'
 
 @ApiTags('Студенти')
@@ -37,7 +39,8 @@ export class StudentController {
 	public constructor(private readonly studentService: StudentService) {}
 
 	@ApiOperation({
-		summary: 'Отримати список студентів (без ПДн; фільтр за станом навчання)'
+		summary:
+			'Отримати список студентів (без ПДн; фільтр за станом навчання)'
 	})
 	@ApiResponse({ status: 200, description: 'Список студентів' })
 	@ApiResponse({ status: 401, description: 'Не авторизований' })
@@ -102,19 +105,33 @@ export class StudentController {
 
 	@ApiOperation({
 		summary:
-			'Масово створити акаунти для всіх студентів без корпоративної пошти'
+			'Масово створити акаунти для відібраних студентів без корпоративної пошти'
 	})
 	@ApiResponse({
 		status: 200,
 		description: 'Результат масового provisioning',
 		schema: {
-			example: { provisioned: 45, skipped: 3, failed: 0, total: 48 }
+			example: {
+				provisioned: 45,
+				skipped: 3,
+				failed: 1,
+				total: 49,
+				failures: [
+					{
+						studentId: 'uuid',
+						personFIO: 'Іваненко Іван Іванович',
+						message: 'Не вдалося створити Google Workspace акаунт'
+					}
+				]
+			}
 		}
 	})
 	@Authorization(UserRole.ADMINISTRATOR)
 	@Post('provision-all-emails')
 	@HttpCode(HttpStatus.OK)
-	public async provisionAllEmails(): Promise<BulkProvisionResult> {
-		return this.studentService.provisionAllEmails()
+	public async provisionAllEmails(
+		@Body() dto: BulkProvisionEmailsDto
+	): Promise<BulkProvisionResult> {
+		return this.studentService.provisionAllEmails(dto.studentIds)
 	}
 }

@@ -17,8 +17,8 @@ export interface StudentEmailInput {
 	birthday: Date | null
 	/** Спеціальність, напр. "D1 Менеджмент" або "122 Комп'ютерні науки" */
 	fullSpecialityName: string | null
-	/** Рік вступу (ліцензійний рік), напр. 2025 */
-	licenseYear: number | null
+	/** Фактична дата початку навчання / вступу */
+	educationDateBegin: Date | null
 }
 
 // ── Результат ─────────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ export class GoogleWorkspaceService {
 		const specialtyCode = this.extractSpecialtyCode(
 			student.fullSpecialityName
 		)
-		const enrollYear = this.formatEnrollYear(student.licenseYear)
+		const enrollYear = this.formatEnrollYear(student.educationDateBegin)
 
 		return `${lastName}.${firstInitial}${day}${month}.${specialtyCode}.${enrollYear}@${this.domain}`
 	}
@@ -267,9 +267,7 @@ export class GoogleWorkspaceService {
 		lastName: string
 		firstName: string
 	} {
-		const source =
-			student.personNameEn?.trim() ||
-			this.fallbackTranslit(student.personFIO)
+		const source = student.personFIO.trim()
 		const parts = source.trim().split(/\s+/)
 		return {
 			lastName: parts[0] ?? 'Unknown',
@@ -305,9 +303,9 @@ export class GoogleWorkspaceService {
 		return code ? code.toLowerCase().replace(/[^a-z0-9]/g, '') : 'xx'
 	}
 
-	private formatEnrollYear(licenseYear: number | null): string {
-		if (!licenseYear) return 'xx'
-		return String(licenseYear).slice(-2)
+	private formatEnrollYear(educationDateBegin: Date | null): string {
+		if (!educationDateBegin) return 'xx'
+		return String(new Date(educationDateBegin).getUTCFullYear()).slice(-2)
 	}
 
 	private generateTemporaryPassword(): string {
