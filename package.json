@@ -28,11 +28,11 @@
     "lint": "cross-env NODE_OPTIONS=--max-old-space-size=4096 eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:ci": "cross-env NODE_OPTIONS=--max-old-space-size=4096 eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings 0",
     "migrate:deploy": "prisma migrate deploy",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
-    "test:cov": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js",
+    "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --watch",
+    "test:cov": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --coverage",
     "test:debug": "cross-env NODE_OPTIONS=--experimental-vm-modules bun --inspect-brk jest --runInBand",
-    "test:e2e": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config ./test/jest-e2e.json"
+    "test:e2e": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --config ./test/jest-e2e.json"
   },
   "overrides": {
     "path-to-regexp": "^8.4.2",
