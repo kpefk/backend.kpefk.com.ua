@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config'
 import { GoogleRecaptchaModuleOptions } from '@nestlab/google-recaptcha'
+import type { Request } from 'express'
 
 import { isDev } from '@/libs/common/utils/is-dev.util'
 
@@ -12,10 +13,10 @@ import { isDev } from '@/libs/common/utils/is-dev.util'
  * @param configService - Сервіс для роботи з конфігурацією прикладання.
  * @returns Об'єкт конфігурації для Google reCAPTCHA.
  */
-export const getRecaptchaConfig = async (
+export const getRecaptchaConfig = (
 	configService: ConfigService
-): Promise<GoogleRecaptchaModuleOptions> => ({
+): GoogleRecaptchaModuleOptions => ({
 	secretKey: configService.getOrThrow<string>('GOOGLE_RECAPTCHA_SECRET_KEY'),
-	response: req => req.headers.recaptcha,
+	response: (req: Request) => String(req.headers.recaptcha ?? ''),
 	skipIf: isDev(configService)
 })

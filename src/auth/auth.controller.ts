@@ -6,8 +6,7 @@ import {
 	HttpStatus,
 	Post,
 	Req,
-	Res,
-	UseGuards
+	Res
 } from '@nestjs/common'
 import {
 	ApiBearerAuth,
@@ -15,7 +14,7 @@ import {
 	ApiResponse,
 	ApiTags
 } from '@nestjs/swagger'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { Recaptcha } from '@nestlab/google-recaptcha'
 import { Request, Response } from 'express'
 
@@ -24,6 +23,7 @@ import { UserEntity } from '@/user/entities/user.entity'
 import { AuthService } from './auth.service'
 import { Authorization } from './decorators/auth.decorator'
 import { Authorized } from './decorators/authorized.decorator'
+import { Public } from './decorators/public.decorator'
 import { LoginDto } from './dto/login.dto'
 import { RegisterStudentDto } from './dto/register-student.dto'
 import { StudentProfileEntity } from './entities/student-profile.entity'
@@ -92,18 +92,18 @@ export class AuthController {
 		description: 'Невірний пароль або акаунт деактивовано'
 	})
 	@ApiResponse({ status: 404, description: 'Користувача не знайдено' })
+	@Public()
 	@Recaptcha()
 	@Throttle({ default: { limit: 5, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@HttpCode(HttpStatus.OK)
 	@Post('login')
 	public async login(@Req() req: Request, @Body() dto: LoginDto) {
 		return this.authService.login(req, dto)
 	}
 
+	@Public()
 	@Recaptcha()
 	@Throttle({ default: { limit: 5, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@HttpCode(HttpStatus.OK)
 	@Post('register')
 	public async register(
@@ -122,6 +122,9 @@ export class AuthController {
 	@ApiBearerAuth('access-token')
 	@ApiResponse({ status: 200, description: 'Сесію успішно завершено' })
 	@ApiResponse({ status: 500, description: 'Не вдалося завершити сесію' })
+	// Публічний свідомо: вихід має лишатись ідемпотентним і не повертати 401,
+	// коли сесія вже протухла — інакше фронтенд не зможе доочистити куку.
+	@Public()
 	@HttpCode(HttpStatus.OK)
 	@Post('logout')
 	public async logout(

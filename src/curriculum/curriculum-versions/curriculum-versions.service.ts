@@ -38,18 +38,6 @@ function assertDraft(
 
 // ─── Selects ─────────────────────────────────────────────────────────────────
 
-const VERSION_SUMMARY_SELECT = {
-	id: true,
-	versionNumber: true,
-	approvalDate: true,
-	approvalOrderNumber: true,
-	approvedBy: true,
-	isPublished: true,
-	publishedAt: true,
-	deprecatedAt: true,
-	createdAt: true
-} as const
-
 @Injectable()
 export class CurriculumVersionsService {
 	private readonly logger = new Logger(CurriculumVersionsService.name)

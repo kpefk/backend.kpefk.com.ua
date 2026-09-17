@@ -4,7 +4,6 @@ import {
 	IsEmail,
 	IsEnum,
 	IsNotEmpty,
-	IsOptional,
 	IsString,
 	IsUUID,
 	ValidateIf
@@ -35,7 +34,7 @@ export class CreateUserDto {
 		description:
 			"UUID запису студента в ЄДЕБО (обов'язково для ролі STUDENT)"
 	})
-	@ValidateIf(o => o.role === UserRole.STUDENT)
+	@ValidateIf((o: CreateUserDto) => o.role === UserRole.STUDENT)
 	@IsUUID('4', { message: 'studentId повинен бути валідним UUID.' })
 	@IsNotEmpty({ message: "studentId обов'язковий для ролі Студент." })
 	studentId?: string
@@ -44,9 +43,12 @@ export class CreateUserDto {
 		description:
 			"UUID запису викладача в ЄДЕБО (обов'язково для ролі TEACHER, опціонально для інших)"
 	})
-	@ValidateIf(o => o.role === UserRole.TEACHER || o.teacherId !== undefined)
+	@ValidateIf(
+		(o: CreateUserDto) =>
+			o.role === UserRole.TEACHER || o.teacherId !== undefined
+	)
 	@IsUUID('4', { message: 'teacherId повинен бути валідним UUID.' })
-	@ValidateIf(o => o.role === UserRole.TEACHER)
+	@ValidateIf((o: CreateUserDto) => o.role === UserRole.TEACHER)
 	@IsNotEmpty({ message: "teacherId обов'язковий для ролі Викладач." })
 	teacherId?: string
 }

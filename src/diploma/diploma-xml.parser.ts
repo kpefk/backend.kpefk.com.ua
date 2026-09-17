@@ -61,8 +61,13 @@ function parseEdeboDate(value: unknown): Date | null {
 }
 
 function str(value: unknown): string | null {
-	if (value === undefined || value === null) return null
-	const s = String(value).trim()
+	// Вузли XML-парсера — примітиви; об'єкт означав би вкладений елемент там,
+	// де очікується значення, і String(obj) мовчки дав би '[object Object]'.
+	if (typeof value === 'number' || typeof value === 'boolean') {
+		return String(value)
+	}
+	if (typeof value !== 'string') return null
+	const s = value.trim()
 	return s.length > 0 ? s : null
 }
 

@@ -44,7 +44,7 @@ function buildPrismaMock() {
 		},
 		group: { findUnique: jest.fn() },
 		curriculumVersion: { findUnique: jest.fn() },
-		groupCurriculumAssignment: { findUnique: jest.fn() },
+		groupCurriculumAssignment: { findUnique: jest.fn(), count: jest.fn() },
 		curriculumComponentTerm: { findUnique: jest.fn() }
 	}
 }
@@ -68,7 +68,9 @@ function makeWc(
 		notes: null,
 		createdAt: new Date(),
 		updatedAt: new Date(),
-		_count: { groupAssignments: overrides.groupAssignmentsCount ?? 0 }
+		// delete() includes `_count: { select: { groupSnapshots: true } }`, so the
+		// snapshot counter is the field the guard actually reads.
+		_count: { groupSnapshots: overrides.groupAssignmentsCount ?? 0 }
 	}
 }
 
@@ -104,6 +106,8 @@ describe('WorkingCurriculaService — delete & approve guards', () => {
 
 	beforeEach(async () => {
 		prisma = buildPrismaMock()
+		// No live group membership unless a test opts in.
+		prisma.groupCurriculumAssignment.count.mockResolvedValue(0)
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				WorkingCurriculaService,

@@ -26,6 +26,9 @@ export class RolesGuard implements CanActivate {
 	 * @returns true if the user has sufficient rights; otherwise throws ForbiddenException.
 	 * @throws ForbiddenException if the user does not have sufficient rights.
 	 */
+	// Лишається async попри відсутність await: це частина публічного контракту
+	// guard'а (як і AuthGuard), на нього спирається schedule-rbac.spec.
+	// eslint-disable-next-line @typescript-eslint/require-await
 	public async canActivate(context: ExecutionContext): Promise<boolean> {
 		const roles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
 			context.getHandler(),

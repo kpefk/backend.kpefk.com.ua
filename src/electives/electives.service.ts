@@ -1388,7 +1388,7 @@ export class ElectivesService {
 	}
 
 	/** @deprecated */
-	public async confirmSelections(academicYear: string, adminUserId: string) {
+	public async confirmSelections(academicYear: string, _adminUserId: string) {
 		const confirmed = await this.prisma.electiveRegistration.updateMany({
 			where: { academicYear, status: SelectionStatus.PENDING },
 			data: { status: SelectionStatus.CONFIRMED, confirmedAt: new Date() }

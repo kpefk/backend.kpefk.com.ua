@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common'
-import { ScheduleModule } from '@nestjs/schedule'
 
 import { EdboModule } from '@/edbo/core/edbo.module'
 import { GroupsModule } from '@/groups/groups.module'

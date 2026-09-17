@@ -250,9 +250,13 @@ export class GroupsService {
 	 * @param students — знімок студентів після upsert у EdboSyncService
 	 * @returns Статистика: кількість нових груп та переміщень
 	 */
-	public async syncFromStudents(
-		students: StudentSyncSnapshot[]
-	): Promise<{ created: number; total: number; moves: number; archived: number; reactivated: number }> {
+	public async syncFromStudents(students: StudentSyncSnapshot[]): Promise<{
+		created: number
+		total: number
+		moves: number
+		archived: number
+		reactivated: number
+	}> {
 		// ── 1. Upsert груп ────────────────────────────────────────────
 		const uniqueNames = [
 			...new Set(
@@ -274,13 +278,6 @@ export class GroupsService {
 			groupByName.set(name, group.id)
 			if (!group.id) created++ // upsert завжди повертає запис; відстежуємо новостворені
 		}
-
-		// Рахуємо нові групи точніше — порівнюємо з тим що було
-		const existingGroupIds = new Set(
-			(await this.prisma.group.findMany({ select: { id: true } })).map(
-				g => g.id
-			)
-		)
 
 		// ── 2. Визначаємо студентів зі зміненою групою ────────────────
 		const changedStudents: ChangedStudentEntry[] = []
@@ -382,7 +379,10 @@ export class GroupsService {
 			where: {
 				groupId: { not: null },
 				expelEducationTypeName: null,
-				OR: [{ educationDateEnd: null }, { educationDateEnd: { gte: now } }]
+				OR: [
+					{ educationDateEnd: null },
+					{ educationDateEnd: { gte: now } }
+				]
 			},
 			_count: { _all: true }
 		})

@@ -7,8 +7,7 @@ import {
 	Param,
 	Patch,
 	Post,
-	Res,
-	UseGuards
+	Res
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import {
@@ -18,12 +17,13 @@ import {
 	ApiResponse,
 	ApiTags
 } from '@nestjs/swagger'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { TwoFactorMethod, UserRole } from '@prisma/client'
 import type { Response } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
+import { Public } from '@/auth/decorators/public.decorator'
 import { PrismaService } from '@/prisma/prisma.service'
 
 import { ChangePasswordDto } from './dto/change-password.dto'
@@ -170,7 +170,6 @@ export class UserController {
 	@ApiResponse({ status: 409, description: 'Адреса вже використовується' })
 	@Authorization()
 	@Throttle({ default: { limit: 5, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@HttpCode(HttpStatus.OK)
 	@Post('profile/email')
 	public async requestEmailChange(
@@ -192,8 +191,10 @@ export class UserController {
 	 */
 	@ApiOperation({ summary: 'Підтвердити зміну email за токеном' })
 	@ApiParam({ name: 'token', description: 'Токен підтвердження' })
+	// Публічний свідомо: користувач переходить за посиланням з листа, і лист
+	// може відкритись у браузері без активної сесії. Авторизує сам токен.
+	@Public()
 	@Throttle({ default: { limit: 10, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@Get('email-change/confirm/:token')
 	public async confirmEmailChange(
 		@Param('token') token: string,

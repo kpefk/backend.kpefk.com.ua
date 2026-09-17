@@ -48,7 +48,9 @@ export class TotpService {
 		try {
 			return authenticator.verify({ token, secret: plaintextSecret })
 		} catch (err) {
-			this.logger.warn(`TOTP verify error: ${err}`)
+			this.logger.warn(
+				`TOTP verify error: ${err instanceof Error ? err.message : String(err)}`
+			)
 			return false
 		}
 	}

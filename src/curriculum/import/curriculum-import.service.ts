@@ -13,8 +13,7 @@ import { PrismaService } from '@/prisma/prisma.service'
 import {
 	CurriculumPart,
 	ParsedComponent,
-	ParsedCurriculum,
-	ParsedSection
+	ParsedCurriculum
 } from './curriculum-import.types'
 import { parseCurriculumWorkbook } from './curriculum-xls.parser'
 import { ImportCommitDto } from './dto/import-commit.dto'

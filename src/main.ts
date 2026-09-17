@@ -13,6 +13,7 @@ import helmet from 'helmet'
 import { createClient } from 'redis'
 
 import { AppModule } from './app.module'
+import { AllExceptionsFilter } from './libs/common/filters/all-exceptions.filter'
 import { DecimalSerializerInterceptor } from './libs/common/interceptors/decimal-serializer.interceptor'
 import { IS_DEV_ENV } from './libs/common/utils/is-dev.util'
 import { ms, StringValue } from './libs/common/utils/ms.util'
@@ -74,7 +75,7 @@ async function bootstrap() {
 	})
 
 	// Логуємо runtime-помилки зʼєднання, щоб клієнт redis не кидав unhandled error.
-	redis.on('error', err =>
+	redis.on('error', (err: Error) =>
 		console.error('[Redis] connection error:', err.message)
 	)
 
@@ -99,6 +100,13 @@ async function bootstrap() {
 		new ClassSerializerInterceptor(app.get(Reflector)),
 		new DecimalSerializerInterceptor()
 	)
+
+	app.useGlobalFilters(new AllExceptionsFilter())
+
+	// Без цього Nest не викликає onModuleDestroy на SIGTERM: PrismaService не
+	// робить $disconnect, з'єднання з БД лишаються висіти до таймауту, а Express
+	// не встигає дренувати активні запити при рестарті/деплої.
+	app.enableShutdownHooks()
 
 	// Swagger documentation — exposed only in development to avoid leaking the
 	// full API surface in production.
@@ -132,7 +140,7 @@ async function bootstrap() {
 		session({
 			secret: configService.getOrThrow<string>('SESSION_SECRET'),
 			name: configService.getOrThrow<string>('SESSION_NAME'),
-			resave: true,
+			resave: false,
 			saveUninitialized: false,
 			cookie: {
 				domain: configService.getOrThrow<string>('SESSION_DOMAIN'),
@@ -162,6 +170,35 @@ async function bootstrap() {
 
 	await app.listen(configService.getOrThrow<number>('APPLICATION_PORT'))
 }
+
+/**
+ * Останній рубіж для помилок, що не дійшли до жодного try/catch і до
+ * глобального exception-фільтра (фільтр ловить лише те, що сталося в межах
+ * обробки HTTP-запиту).
+ *
+ * `unhandledRejection` лише логуємо: обірваний promise у фоновому cron'і не
+ * привід вбивати інстанс, який обслуговує запити. `uncaughtException` —
+ * навпаки: після нього стан процесу недостовірний, тому коректно гасимо
+ * процес і віддаємо оркестратору перезапустити (enableShutdownHooks вже
+ * забезпечує закриття з'єднань Prisma).
+ */
+function registerProcessHandlers(): void {
+	const logger = new Logger('Process')
+
+	process.on('unhandledRejection', (reason: unknown) => {
+		logger.error(
+			'Unhandled promise rejection',
+			reason instanceof Error ? reason.stack : String(reason)
+		)
+	})
+
+	process.on('uncaughtException', (error: Error) => {
+		logger.error('Uncaught exception — зупиняємо процес', error.stack)
+		process.exit(1)
+	})
+}
+
+registerProcessHandlers()
 
 bootstrap().catch(error => {
 	console.error('Application failed to start', error)

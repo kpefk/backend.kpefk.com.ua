@@ -7,11 +7,15 @@ import {
 	UnauthorizedException
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { User, UserRole } from '@prisma/client'
+import { Student, User, UserRole } from '@prisma/client'
 import { hash, verify } from 'argon2'
 import { Request, Response } from 'express'
 
-import { EdboService } from '@/edbo/core/edbo.service'
+import {
+	EdboPersonDocument,
+	EdboService,
+	EdboStudentRecord
+} from '@/edbo/core/edbo.service'
 import { MailService } from '@/libs/mail/mail.service'
 import { PrismaService } from '@/prisma/prisma.service'
 import { UserEntity } from '@/user/entities/user.entity'
@@ -20,6 +24,7 @@ import { UserService } from '@/user/user.service'
 import { LoginDto } from './dto/login.dto'
 import { RegisterStudentDto } from './dto/register-student.dto'
 import { StudentProfileEntity } from './entities/student-profile.entity'
+import { regenerateSession } from './session.util'
 import { TotpService } from './two-factor-auth/totp.service'
 import { TwoFactorAuthService } from './two-factor-auth/two-factor-auth.service'
 
@@ -313,10 +318,17 @@ export class AuthService {
 	 * @param edeboDocuments - Документи з ЄДЕБО API
 	 * @returns Об'єкт для Prisma Student create/update
 	 */
+	/**
+	 * Джерелом може бути як свіжий запис із ЄДЕБО, так і вже наявний рядок
+	 * Student з локальної БД: `findStudentInEdebo` спершу шукає локально і
+	 * лише потім іде в ЄДЕБО. Поля збігаються за назвами, різняться лише
+	 * типи дат (`string` в ЄДЕБО проти `Date` у Prisma) — тому union, а не
+	 * приведення до одного з боків.
+	 */
 	private mapEdboStudentData(
-		edeboStudent: any,
+		edeboStudent: EdboStudentRecord | Student,
 		dto: RegisterStudentDto,
-		edeboDocuments: any[] = []
+		edeboDocuments: EdboPersonDocument[] = []
 	) {
 		// Витягуємо номери документів з ЄДЕБО
 		const rnokppDoc = edeboDocuments.find(d => d.idPersonDocumentType === 5) // РНОКПП
@@ -460,20 +472,13 @@ export class AuthService {
 		req: Request,
 		user: User
 	): Promise<{ user: UserEntity }> {
-		return new Promise<{ user: UserEntity }>((resolve, reject) => {
-			req.session.userId = user.id
-
-			req.session.save(err => {
-				if (err) {
-					console.error('Session save error:', err)
-					return reject(
-						new InternalServerErrorException(
-							'Не вдалося зберегти сесію. Будь ласка, перевірте налаштування сесії.'
-						)
-					)
-				}
-				resolve({ user: new UserEntity(user) })
-			})
-		})
+		try {
+			await regenerateSession(req, user.id)
+			return { user: new UserEntity(user) }
+		} catch {
+			throw new InternalServerErrorException(
+				'Не вдалося зберегти сесію. Будь ласка, перевірте налаштування сесії.'
+			)
+		}
 	}
 }

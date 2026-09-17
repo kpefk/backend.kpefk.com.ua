@@ -144,12 +144,12 @@ Defined in `prisma/schema.prisma` as the `UserRole` enum:
 
 | Role | Description |
 |------|-------------|
-| `STUDENT` | Student |
-| `TEACHER` | Teacher |
-| `SCHEDULE_DISPATCHER` | Schedule dispatcher |
-| `HEAD_OF_DEPARTMENT` | Head of department |
-| `DEPUTY_DIRECTOR` | Deputy director |
-| `DIRECTOR` | Director |
+| `STUDENT` | View own data, select electives |
+| `TEACHER` | View own load and qualifications |
+| `SCHEDULE_DISPATCHER` | Manage schedule |
+| `HEAD_OF_DEPARTMENT` | Department oversight |
+| `DEPUTY_DIRECTOR` | Generate teacher load, manage curricula |
+| `DIRECTOR` | Confirm teacher load orders, approve working curricula |
 | `ADMINISTRATOR` | Full system access |
 
 ---
@@ -199,18 +199,6 @@ The curriculum domain is the backbone of academic planning:
 
 ---
 
-## User roles
-
-- **STUDENT** — View own data, select electives
-- **TEACHER** — View own load and qualifications
-- **SCHEDULE_DISPATCHER** — Manage schedule
-- **HEAD_OF_DEPARTMENT** — Department oversight
-- **DEPUTY_DIRECTOR** — Generate teacher load, manage curricula
-- **DIRECTOR** — Confirm teacher load orders, approve working curricula
-- **ADMINISTRATOR** — Full system access
-
----
-
 ## EDBO synchronization
 
 EDBO (ЄДЕБО) is the national education registry. This backend synchronizes student and teacher records from it.
@@ -244,7 +232,7 @@ EDBO (ЄДЕБО) is the national education registry. This backend synchronizes 
 
 ## Prerequisites
 
-- **Bun** >= 1.3.10 (or Node.js >= 24.14.0)
+- **Bun** >= 1.3.10 (or Node.js >= 24.15.0)
 - **Docker** and Docker Compose (for local PostgreSQL + Redis)
 - **EDBO API access** — a license key, login, and password for the ЄДЕБО REST API proxy
 - **Google Cloud project** — OAuth 2.0 credentials and a service account for Google Drive
@@ -394,6 +382,8 @@ bun run start:prod         # Run compiled output
 
 # Code quality
 bun run lint               # ESLint with auto-fix
+bun run lint:ci            # ESLint without auto-fix (fails on any problem)
+bun run typecheck          # tsc --noEmit
 bun run format             # Prettier
 
 # Tests
@@ -403,11 +393,61 @@ bun run test:e2e           # End-to-end tests
 
 # Prisma
 bunx prisma migrate dev --name <name>   # Create migration
-bunx prisma migrate deploy              # Apply migrations
+bun run migrate:deploy                  # Apply migrations (production)
 bunx prisma generate                    # Regenerate client
 bunx prisma studio                      # Open GUI
 bunx prisma db seed                     # Seed database
 ```
+
+---
+
+## Deployment
+
+### Continuous integration
+
+Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+with four independent blocking jobs: **typecheck**, **lint**, **test**, **build**.
+A red job blocks the merge. Each job runs `bunx prisma generate` first — the
+`@prisma/client` types are generated and are not committed to the repository.
+
+### Release steps
+
+There is no deployment artifact (no Dockerfile) in this repository yet, so the
+steps below describe deploying the compiled output directly onto a host.
+
+```bash
+bun install --frozen-lockfile   # Reproducible install from bun.lock
+bunx prisma generate            # Generate the Prisma client
+bun run migrate:deploy          # Apply pending migrations (never `migrate dev`)
+bun run build                   # Compile to dist/
+bun run start:prod              # node dist/main
+```
+
+### Runtime requirements
+
+- **Environment variables are validated at startup** against the Zod schema in
+  [`src/config/env.validation.ts`](src/config/env.validation.ts). A missing or
+  malformed variable aborts the boot with an explicit message instead of
+  failing later on the first request that needs it.
+- **PostgreSQL and Redis must be reachable.** Redis is required: the session
+  store lives there, and the app intentionally fails fast without it.
+- **Send `SIGTERM` to stop.** `app.enableShutdownHooks()` is enabled, so Prisma
+  closes its connections and in-flight requests are drained. `SIGKILL` skips
+  this.
+
+### Health check
+
+`GET /health` is public and reports the state of both dependencies:
+
+```bash
+curl http://localhost:4000/health
+```
+
+- `200` — all dependencies are up.
+- `503` — at least one is down; the JSON body names it.
+
+Point the orchestrator's liveness/readiness probe at this endpoint. It is rate
+limited at 300 requests per minute, well above normal probe frequency.
 
 ---
 

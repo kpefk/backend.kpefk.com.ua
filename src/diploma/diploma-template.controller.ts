@@ -22,9 +22,11 @@ import {
 	ApiOperation,
 	ApiTags
 } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
+import { UPLOAD_LIMITS } from '@/libs/common/upload-limits'
 
 import {
 	DiplomaTemplateService,
@@ -98,16 +100,25 @@ export class DiplomaTemplateController {
 		summary: 'Завантажити .docx шаблон (kind: diploma | addendum)'
 	})
 	@ApiConsumes('multipart/form-data')
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post(':id/files/:kind')
 	@HttpCode(HttpStatus.OK)
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.diplomaTemplate, files: 1 }
+		})
+	)
 	public async uploadFile(
 		@Param('id') id: string,
 		@Param('kind') kind: TemplateFileKind,
 		@UploadedFile(
 			new ParseFilePipe({
 				validators: [
-					new MaxFileSizeValidator({ maxSize: 20 * 1024 * 1024 }),
+					new MaxFileSizeValidator({
+						maxSize: UPLOAD_LIMITS.diplomaTemplate
+					}),
 					// Лише .docx — шаблон іде напряму в docxtemplater.
 					new FileTypeValidator({
 						fileType:

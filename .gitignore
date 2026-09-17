@@ -40,3 +40,16 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+
+# Secrets: ключі, сертифікати, service-account файли Google.
+# Тримаємо окремим блоком — випадково закомічений .pem або
+# *service-account*.json означає ротацію всіх облікових даних.
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*service-account*.json
+
+# TypeScript incremental build cache
+*.tsbuildinfo

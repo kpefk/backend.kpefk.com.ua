@@ -1,0 +1,71 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+# Новий пуш у ту саму гілку скасовує попередній прогін — не тримаємо чергу
+# на застарілих комітах.
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    # Жоден із кроків не ходить у БД (юніт-тести працюють на моках), але
+    # prisma.config.ts читає POSTGRES_URI через dotenv на етапі `generate`.
+    POSTGRES_URI: postgresql://ci:ci@127.0.0.1:5432/ci
+    NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+    typecheck:
+        name: Typecheck
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.3.10
+            - run: bun install --frozen-lockfile
+            # Типи @prisma/client генеруються, у репозиторії їх немає —
+            # без цього кроку впаде і typecheck, і build, і тести.
+            - run: bunx prisma generate
+            - run: bun run typecheck
+
+    lint:
+        name: Lint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.3.10
+            - run: bun install --frozen-lockfile
+            - run: bunx prisma generate
+            # Саме lint:ci, а не lint: останній має --fix і мовчки «виправляє»
+            # проблеми замість того, щоб завалити прогін.
+            - run: bun run lint:ci
+
+    test:
+        name: Unit tests
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.3.10
+            - run: bun install --frozen-lockfile
+            - run: bunx prisma generate
+            - run: bun run test
+
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.3.10
+            - run: bun install --frozen-lockfile
+            - run: bunx prisma generate
+            - run: bun run build

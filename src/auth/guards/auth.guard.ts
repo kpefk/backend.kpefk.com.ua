@@ -4,8 +4,11 @@ import {
 	Injectable,
 	UnauthorizedException
 } from '@nestjs/common'
+import { Reflector } from '@nestjs/core'
 
 import { UserService } from '@/user/user.service'
+
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator'
 
 /**
  * Guard for checking user authentication.
@@ -15,8 +18,12 @@ export class AuthGuard implements CanActivate {
 	/**
 	 * Constructor of the authentication guard.
 	 * @param userService - Service for user operations.
+	 * @param reflector - Reflector for reading the `@Public()` metadata.
 	 */
-	public constructor(private readonly userService: UserService) {}
+	public constructor(
+		private readonly userService: UserService,
+		private readonly reflector: Reflector
+	) {}
 
 	/**
 	 * Checks if the user has access to the resource.
@@ -25,12 +32,24 @@ export class AuthGuard implements CanActivate {
 	 * @throws UnauthorizedException if the user is not authenticated.
 	 */
 	public async canActivate(context: ExecutionContext): Promise<boolean> {
+		const isPublic = this.reflector.getAllAndOverride<boolean>(
+			IS_PUBLIC_KEY,
+			[context.getHandler(), context.getClass()]
+		)
+		if (isPublic) return true
+
 		const request = context.switchToHttp().getRequest<
 			Request & {
 				session: { userId?: string }
 				user: unknown
 			}
 		>()
+
+		// Цей guard виконується двічі на захищених роутах: спершу глобально
+		// (APP_GUARD), потім ще раз через @Authorization() на контролері.
+		// Якщо глобальний прохід уже підвантажив користувача — не робимо
+		// другий запит до БД на кожен запит.
+		if (request.user) return true
 
 		if (!request.session.userId) {
 			throw new UnauthorizedException(

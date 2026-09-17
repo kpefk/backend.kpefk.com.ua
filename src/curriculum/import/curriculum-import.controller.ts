@@ -18,9 +18,11 @@ import {
 	ApiResponse,
 	ApiTags
 } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
+import { UPLOAD_LIMITS } from '@/libs/common/upload-limits'
 
 import { CurriculumImportService } from './curriculum-import.service'
 import { ImportCommitDto } from './dto/import-commit.dto'
@@ -41,14 +43,23 @@ export class CurriculumImportController {
 	@ApiOperation({ summary: 'Предперегляд: парсинг .xls без запису в БД' })
 	@ApiConsumes('multipart/form-data')
 	@ApiResponse({ status: 200, description: 'Розпарсена структура плану' })
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post('preview')
 	@HttpCode(HttpStatus.OK)
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.curriculumImport, files: 1 }
+		})
+	)
 	public preview(
 		@UploadedFile(
 			new ParseFilePipe({
 				validators: [
-					new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
+					new MaxFileSizeValidator({
+						maxSize: UPLOAD_LIMITS.curriculumImport
+					}),
 					// Лише Excel (.xls/.xlsx) — блокує підкидання довільних файлів у парсер.
 					new FileTypeValidator({
 						fileType:

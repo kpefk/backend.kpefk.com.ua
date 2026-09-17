@@ -1,11 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import {
-	IsArray,
-	IsInt,
-	IsOptional,
-	ValidateNested,
-} from 'class-validator'
+import { IsArray, IsInt, IsOptional, ValidateNested } from 'class-validator'
 
 /** Елемент переліку статусів заяв (ЄДЕБО IdentityListItem). */
 export class PersonRequestStatusListItemDto {

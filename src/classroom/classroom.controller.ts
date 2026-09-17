@@ -13,7 +13,6 @@ import {
 	Post,
 	Res,
 	UploadedFile,
-	UseGuards,
 	UseInterceptors
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
@@ -24,12 +23,14 @@ import {
 	ApiResponse,
 	ApiTags
 } from '@nestjs/swagger'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 import { Response } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
+import { Public } from '@/auth/decorators/public.decorator'
+import { UPLOAD_LIMITS } from '@/libs/common/upload-limits'
 import { GoogleDriveService } from '@/libs/google-drive/google-drive.service'
 
 import { ClassroomService } from './classroom.service'
@@ -93,7 +94,7 @@ export class ClassroomController {
 	@ApiResponse({ status: 404, description: 'Файл не знайдено' })
 	// Публічний роут (щоб <img> вантажились без креденшелів) → rate-limit проти
 	// перебору id; перед стрімом перевіряємо, що файл справді належить кабінету.
-	@UseGuards(ThrottlerGuard)
+	@Public()
 	@Throttle({ default: { ttl: 60_000, limit: 120 } })
 	@Get('photos/:googleFileId')
 	public async proxyPhoto(
@@ -203,14 +204,23 @@ export class ClassroomController {
 	@ApiResponse({ status: 404, description: 'Кабінет не знайдено' })
 	@Authorization(UserRole.ADMINISTRATOR, UserRole.TEACHER)
 	@HttpCode(HttpStatus.OK)
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post(':id/photos')
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.classroomPhoto, files: 1 }
+		})
+	)
 	public async uploadPhoto(
 		@Param('id') id: string,
 		@UploadedFile(
 			new ParseFilePipe({
 				validators: [
-					new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // Максимальний розмір — 5MB
+					new MaxFileSizeValidator({
+						maxSize: UPLOAD_LIMITS.classroomPhoto
+					}),
 					new FileTypeValidator({
 						fileType: /image\/(jpeg|png|webp)/
 					}) // Дозволені типи файлів
@@ -282,7 +292,7 @@ export class ClassroomController {
 	 */
 	@ApiOperation({ summary: 'Проксі паспорту кабінету (PDF)' })
 	@ApiParam({ name: 'googleFileId', description: 'ID файлу на Google Drive' })
-	@UseGuards(ThrottlerGuard)
+	@Public()
 	@Throttle({ default: { ttl: 60_000, limit: 60 } })
 	@Get('passport/:googleFileId')
 	public async proxyPassport(
@@ -303,14 +313,23 @@ export class ClassroomController {
 	@ApiOperation({ summary: 'Завантажити паспорт кабінету (PDF)' })
 	@Authorization(UserRole.ADMINISTRATOR, UserRole.TEACHER)
 	@HttpCode(HttpStatus.OK)
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post(':id/passport')
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.classroomPassport, files: 1 }
+		})
+	)
 	public async uploadPassport(
 		@Param('id') id: string,
 		@UploadedFile(
 			new ParseFilePipe({
 				validators: [
-					new MaxFileSizeValidator({ maxSize: 20 * 1024 * 1024 }),
+					new MaxFileSizeValidator({
+						maxSize: UPLOAD_LIMITS.classroomPassport
+					}),
 					new FileTypeValidator({ fileType: /application\/pdf/ })
 				]
 			})

@@ -106,7 +106,7 @@ export class StudentEducationsAddParamsDto {
 			"Код документу вступу. Обов'язковий для всіх статусів, окрім статусу 25 (декларація)",
 		example: 1
 	})
-	@ValidateIf(o => o.historyTypeId !== 25)
+	@ValidateIf((o: StudentEducationsAddParamsDto) => o.historyTypeId !== 25)
 	@IsOptional()
 	@IsInt()
 	documentEducationId?: number
@@ -299,7 +299,7 @@ export class StudentEducationsAddParamsDto {
 		type: String,
 		format: 'date-time'
 	})
-	@ValidateIf(o => o.oweEducationId != null)
+	@ValidateIf((o: StudentEducationsAddParamsDto) => o.oweEducationId != null)
 	@IsOptional()
 	@Type(() => Date)
 	@IsDate()
@@ -309,7 +309,7 @@ export class StudentEducationsAddParamsDto {
 		description: 'Сума компенсації. Ігнорується якщо oweEducationId = null',
 		example: 15000
 	})
-	@ValidateIf(o => o.oweEducationId != null)
+	@ValidateIf((o: StudentEducationsAddParamsDto) => o.oweEducationId != null)
 	@IsOptional()
 	@IsInt()
 	debtAmount?: number
@@ -318,7 +318,7 @@ export class StudentEducationsAddParamsDto {
 		description: 'Чи компенсував. Ігнорується якщо oweEducationId = null',
 		example: false
 	})
-	@ValidateIf(o => o.oweEducationId != null)
+	@ValidateIf((o: StudentEducationsAddParamsDto) => o.oweEducationId != null)
 	@IsOptional()
 	@IsBoolean()
 	isCompensated?: boolean
@@ -328,7 +328,7 @@ export class StudentEducationsAddParamsDto {
 			'Підстава звільнення від компенсації. Ігнорується якщо oweEducationId = null',
 		example: 'Звільнений від компенсації згідно наказу №5'
 	})
-	@ValidateIf(o => o.oweEducationId != null)
+	@ValidateIf((o: StudentEducationsAddParamsDto) => o.oweEducationId != null)
 	@IsOptional()
 	@IsString()
 	noNeedCompensationReason?: string

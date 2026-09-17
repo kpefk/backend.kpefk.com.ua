@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
@@ -16,6 +17,11 @@ import {
 // @Authorization(role) підключає і AuthGuard, і RolesGuard.
 // Окремий @Roles() без UseGuards(RolesGuard) НЕ перевіряється — роль ігнорувалася.
 @Authorization(UserRole.ADMINISTRATOR)
+// Найдорожчі ручні операції в системі: повний прохід тягне тисячі HTTP-запитів
+// до ЄДЕБО (див. getPersonDocumentsSync — 1 запит на студента). Кілька
+// паралельних запусків здатні і покласти нас, і вичерпати ліміт на боці ЄДЕБО,
+// тому ліміт значно жорсткіший за дефолтні 60/хв.
+@Throttle({ default: { ttl: 60_000, limit: 5 } })
 export class EdboSyncController {
 	public constructor(private readonly edboSyncService: EdboSyncService) {}
 

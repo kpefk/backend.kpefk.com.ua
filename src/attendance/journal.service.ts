@@ -47,21 +47,6 @@ const CELL_PAD = { top: 40, bottom: 40, left: 60, right: 60 }
 
 const MAX_DATE_COLS = 18
 
-const UA_MONTHS_SHORT = [
-	'І',
-	'ІІ',
-	'ІІІ',
-	'ІV',
-	'V',
-	'VІ',
-	'VІІ',
-	'VІІІ',
-	'ІХ',
-	'Х',
-	'ХІ',
-	'ХІІ'
-] as const
-
 @Injectable()
 export class JournalService {
 	private readonly logger = new Logger(JournalService.name)

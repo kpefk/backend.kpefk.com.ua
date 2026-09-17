@@ -3,16 +3,6 @@ import { IsOptional, IsString, Matches, MaxLength } from 'class-validator'
 
 const UA_PHONE = /^(\+?38)?0\d{9}$/
 
-function PhoneProp(label: string) {
-	return [
-		IsOptional(),
-		IsString(),
-		Matches(UA_PHONE, {
-			message: `${label}: формат +380XXXXXXXXX або 0XXXXXXXXX`
-		})
-	]
-}
-
 export class UpdateParentInfoDto {
 	@ApiPropertyOptional()
 	@IsOptional()

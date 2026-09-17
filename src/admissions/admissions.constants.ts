@@ -2,10 +2,10 @@ import { UserRole } from '@prisma/client'
 
 /** Ролі, що бачать звіти вступної кампанії. */
 export const ADMISSIONS_MANAGE_ROLES = [
-  UserRole.HEAD_OF_DEPARTMENT,
-  UserRole.DEPUTY_DIRECTOR,
-  UserRole.DIRECTOR,
-  UserRole.ADMINISTRATOR,
+	UserRole.HEAD_OF_DEPARTMENT,
+	UserRole.DEPUTY_DIRECTOR,
+	UserRole.DIRECTOR,
+	UserRole.ADMINISTRATOR
 ] as const
 
 /** Місяці активної вступної кампанії — вікно для cron-синхронізації (черв–вер). */
@@ -29,19 +29,19 @@ export const AUTO_POLL_TICK_MS = 15_000
  * вони зберігаються завжди.
  */
 export const APPLICATION_PII_FIELDS = [
-  'fio',
-  'birthday',
-  'personSexName',
-  'phone',
-  'email',
-  'documentTypeId',
-  'documentSeries',
-  'documentNumbers',
-  'documentIssued',
-  'documentDateGet',
-  'personalCode',
-  'entryEduDocSeries',
-  'entryEduDocNumber',
-  'entryEduDocIssued',
-  'entryEduDocDateGet',
+	'fio',
+	'birthday',
+	'personSexName',
+	'phone',
+	'email',
+	'documentTypeId',
+	'documentSeries',
+	'documentNumbers',
+	'documentIssued',
+	'documentDateGet',
+	'personalCode',
+	'entryEduDocSeries',
+	'entryEduDocNumber',
+	'entryEduDocIssued',
+	'entryEduDocDateGet'
 ] as const

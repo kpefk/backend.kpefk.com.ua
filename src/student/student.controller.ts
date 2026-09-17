@@ -116,6 +116,13 @@ export class StudentController {
 				skipped: 3,
 				failed: 1,
 				total: 49,
+				credentials: [
+					{
+						personFIO: 'Іваненко Іван Іванович',
+						email: 'ivanenko.i0109.g11.26@kpefk.com.ua',
+						password: 'temporary-password'
+					}
+				],
 				failures: [
 					{
 						studentId: 'uuid',

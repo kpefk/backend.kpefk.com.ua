@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsUUID, Matches } from 'class-validator'
+import { IsOptional, IsUUID } from 'class-validator'
 
 export class CreateWorkingAssignmentDto {
 	@ApiProperty({ description: 'UUID академічної групи', example: 'uuid' })

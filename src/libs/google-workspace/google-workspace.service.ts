@@ -27,6 +27,8 @@ export interface ProvisionResult {
 	email: string
 	/** true = створено зараз, false = вже існував */
 	created: boolean
+	/** Тимчасовий пароль повертається лише для щойно створеного акаунта. */
+	password?: string
 }
 
 // ── KMU-2010 таблиця транслітерації ──────────────────────────────────────────
@@ -197,20 +199,21 @@ export class GoogleWorkspaceService {
 		student: StudentEmailInput & { personFIO: string }
 	): Promise<ProvisionResult> {
 		const { lastName, firstName } = this.parseFullName(student)
+		const password = this.generateTemporaryPassword()
 
 		try {
 			await this.directory.users.insert({
 				requestBody: {
 					primaryEmail: email,
 					name: { familyName: lastName, givenName: firstName },
-					password: this.generateTemporaryPassword(),
+					password,
 					changePasswordAtNextLogin: true,
 					orgUnitPath: '/Студенти'
 				}
 			})
 
 			this.logger.log(`Provisioned workspace account: ${email}`)
-			return { email, created: true }
+			return { email, created: true, password }
 		} catch (error: unknown) {
 			const err = error as { code?: number; message?: string }
 

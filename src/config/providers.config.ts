@@ -12,9 +12,9 @@ import { GoogleProvider } from '@/auth/provider/services/google.provider'
  * @param configService - Сервіс для роботи з конфігурацією прикладання.
  * @returns Об'єкт конфігурації для провайдерів OAuth.
  */
-export const getProvidersConfig = async (
+export const getProvidersConfig = (
 	configService: ConfigService
-): Promise<TypeOptions> => ({
+): TypeOptions => ({
 	baseUrl: configService.getOrThrow<string>('APPLICATION_URL'),
 	services: [
 		new GoogleProvider({

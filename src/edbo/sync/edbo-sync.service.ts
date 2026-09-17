@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import type { Prisma } from '@prisma/client'
 
-import { EdboPersonDocument, EdboService } from '@/edbo/core/edbo.service'
+import {
+	EdboPersonDocument,
+	EdboService,
+	EdboStudentRecord
+} from '@/edbo/core/edbo.service'
 import { GroupsService } from '@/groups/groups.service'
 import { PrismaService } from '@/prisma/prisma.service'
 import { parseCoursesInfo } from '@/staff/courses-info-parser'
@@ -35,85 +39,6 @@ interface EdboStudyProgramListParams {
 }
 
 // ── Типи відповіді ЄДЕБО API ──────────────────────────────────────
-
-interface EdboStudentRecord {
-	educationId: number
-	personId: number
-	personCodeU: string
-	educationHistoryActualId: number
-	dateBegin: string
-	dateEnd: string
-	historyTypeId: number
-	personEducationHistoryTypeName: string
-	personName: string
-	personFIO: string
-	birthday: string
-	personNameEn: string
-	personSexId: number
-	personSexName: string
-	isUkr: boolean
-	licenseYear: number
-	educationDateBegin: string
-	educationDateEnd: string
-	facultyName: string
-	qualificationGroupId: number
-	qualificationGroupName: string
-	baseQualificationName: string
-	educationFormId: number
-	educationFormName: string
-	isDualForm: boolean
-	personEducationPaymentTypeName: string
-	/// Live-API інколи віддає поле в PascalCase (doc-vs-live gotcha, як edrpo/universityType
-	/// в university-sync) — тримаємо обидва варіанти й обираємо непорожній при мапінгу.
-	PersonEducationPaymentTypeName?: string
-	isLegalEntityPayment: boolean
-	budgetYear: number
-	isRegionGovernanceOrder: number
-	isSecondHigher: boolean
-	isShortTerm: boolean
-	fullSpecialityName: string
-	specializationName: string
-	centralSpecializationId: number
-	universityStudyProgramId: number
-	studyProgramName: string
-	studyProgramNameEn: string
-	masterProgramTypeShortName: string
-	eduProgramChooseDate: string
-	professionInfo: string
-	courseId: number
-	courseName: string
-	groupName: string
-	isExistsGrantRequest: boolean
-	privilegeCategory: string
-	isDocEducationExists: boolean
-	isDocStudTicketExists: boolean
-	isDocAcademExists: boolean
-	isDocAcademGeneratedExists: boolean
-	academicMobilityList: string
-	expelEducationTypeName: string
-	academicLeaveTypeName: string
-	universityIdFrom: number
-	univNameFrom: string
-	isWithoutPzso: boolean
-	modifyDate: string
-	enrollInfo: string
-	orderOfEnrollmentId: number
-	foreignEnrollInfo: string
-	foreignOrderOfEnrollmentId: number
-	orderStatusDiploma: string
-	orderStatusTicket: string
-	orderStatusSvid: string
-	eduEndFIO: string
-	alienId: number
-	alienCount: number
-	foreignTypeId: number
-	foreignTypeName: string
-	budgetTransferCategoryId: number
-	budgetTransferCategoryName: string
-	konkursValue: number
-	sourceTypeName: string
-	isForPhdRenewal: boolean
-}
 
 interface EdboStaffRecord {
 	staffId: number

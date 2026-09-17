@@ -13,12 +13,18 @@ import { Request, Response } from 'express'
 
 import { UserService } from '@/user/user.service'
 
+import { Public } from '../decorators/public.decorator'
 import { AuthProviderGuard } from '../guards/provider.guard'
+import { regenerateSession } from '../session.util'
 
 import { ProviderService } from './provider.service'
 
 @ApiTags('OAuth')
 @Controller('auth/oauth')
+// Вхідна точка входу через провайдера — сесії тут ще немає за визначенням.
+// Провайдера валідує AuthProviderGuard, а callback все одно вимагає валідний
+// `code` від Google.
+@Public()
 export class OAuthController {
 	public constructor(
 		private readonly providerService: ProviderService,
@@ -81,11 +87,7 @@ export class OAuthController {
 				)
 			}
 
-			// Зберігаємо сесію
-			await new Promise<void>((resolve, reject) => {
-				req.session.userId = user.id
-				req.session.save(err => (err ? reject(err) : resolve()))
-			})
+			await regenerateSession(req, user.id)
 
 			res.redirect(`${frontendUrl}/dashboard`)
 		} catch {

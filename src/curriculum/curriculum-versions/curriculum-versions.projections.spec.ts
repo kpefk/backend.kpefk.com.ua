@@ -6,7 +6,7 @@
  *
  * Run with: npx jest curriculum-versions.projections.spec.ts
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common'
+import { BadRequestException } from '@nestjs/common'
 import { Test, TestingModule } from '@nestjs/testing'
 
 import { PrismaService } from '../../prisma/prisma.service'
@@ -35,16 +35,6 @@ function makePublishedVersion(
 	}
 }
 
-function makeSection(
-	overrides: Partial<{ id: string; versionId: string }> = {}
-) {
-	return {
-		id: overrides.id ?? 'sec-1',
-		versionId: overrides.versionId ?? 'ver-1',
-		version: makeDraftVersion({ id: overrides.versionId ?? 'ver-1' })
-	}
-}
-
 function makeComponent(
 	overrides: Partial<{
 		id: string
@@ -63,28 +53,6 @@ function makeComponent(
 			version: makeDraftVersion({ id: versionId })
 		},
 		terms: []
-	}
-}
-
-function makeProjection(
-	overrides: Partial<{
-		id: string
-		componentId: string
-		sectionId: string
-		versionId: string
-	}> = {}
-) {
-	const componentId = overrides.componentId ?? 'comp-1'
-	const sectionId = overrides.sectionId ?? 'sec-2'
-	const versionId = overrides.versionId ?? 'ver-1'
-	return {
-		id: overrides.id ?? 'proj-1',
-		componentId,
-		sectionId,
-		displayOrder: 0,
-		displayMarker: null,
-		displayNote: null,
-		component: makeComponent({ id: componentId, versionId })
 	}
 }
 

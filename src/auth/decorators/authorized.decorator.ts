@@ -13,8 +13,9 @@ import { User } from '@prisma/client'
  * @returns Value of the user property or the entire user object.
  */
 export const Authorized = createParamDecorator(
-	(data: keyof User, ctx: ExecutionContext) => {
-		const request = ctx.switchToHttp().getRequest()
+	(data: keyof User | undefined, ctx: ExecutionContext) => {
+		// AuthGuard кладе сюди користувача ще до виконання handler'а.
+		const request = ctx.switchToHttp().getRequest<{ user: User }>()
 		const user = request.user
 
 		return data ? user[data] : user

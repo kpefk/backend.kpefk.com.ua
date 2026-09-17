@@ -12,7 +12,7 @@ export class LinkTeacherDto {
 		nullable: true,
 		example: '9f1b8d6e-6b8a-4f0e-9f3a-2c1b0d4e5f6a'
 	})
-	@ValidateIf(o => o.teacherId !== null)
+	@ValidateIf((o: LinkTeacherDto) => o.teacherId !== null)
 	@IsUUID('4', { message: 'teacherId повинен бути валідним UUID або null.' })
 	teacherId!: string | null
 }

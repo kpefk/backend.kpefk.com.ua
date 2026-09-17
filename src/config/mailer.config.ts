@@ -12,9 +12,9 @@ import { isDev } from '@/libs/common/utils/is-dev.util'
  * @param configService - Сервіс для роботи з конфігурацією прикладання.
  * @returns Об'єкт конфігурації для Mailer.
  */
-export const getMailerConfig = async (
+export const getMailerConfig = (
 	configService: ConfigService
-): Promise<MailerOptions> => ({
+): MailerOptions => ({
 	transport: {
 		host: configService.getOrThrow<string>('MAIL_HOST'),
 		port: configService.getOrThrow<number>('MAIL_PORT'),

@@ -48,6 +48,93 @@ export interface EdboPersonDocumentsResponse {
 }
 
 /**
+ * Запис про навчання студента з `/api/studentEducations/list`.
+ *
+ * Канонічне місце для типу — core, бо саме тут живе HTTP-клієнт ЄДЕБО;
+ * `edbo-sync` імпортує його звідси, щоб опис форми відповіді не двоївся.
+ */
+export interface EdboStudentRecord {
+	educationId: number
+	personId: number
+	/// ЄДЕБО не завжди повертає код ЗВО у записі — тоді підставляємо EDEBO_CODE.
+	universityId?: number
+	personCodeU: string
+	educationHistoryActualId: number
+	dateBegin: string
+	dateEnd: string
+	historyTypeId: number
+	personEducationHistoryTypeName: string
+	personName: string
+	personFIO: string
+	birthday: string
+	personNameEn: string
+	personSexId: number
+	personSexName: string
+	isUkr: boolean
+	licenseYear: number
+	educationDateBegin: string
+	educationDateEnd: string
+	facultyName: string
+	qualificationGroupId: number
+	qualificationGroupName: string
+	baseQualificationName: string
+	educationFormId: number
+	educationFormName: string
+	isDualForm: boolean
+	personEducationPaymentTypeName: string
+	/// Live-API інколи віддає поле в PascalCase (doc-vs-live gotcha, як edrpo/universityType
+	/// в university-sync) — тримаємо обидва варіанти й обираємо непорожній при мапінгу.
+	PersonEducationPaymentTypeName?: string
+	isLegalEntityPayment: boolean
+	budgetYear: number
+	isRegionGovernanceOrder: number
+	isSecondHigher: boolean
+	isShortTerm: boolean
+	fullSpecialityName: string
+	specializationName: string
+	centralSpecializationId: number
+	universityStudyProgramId: number
+	studyProgramName: string
+	studyProgramNameEn: string
+	masterProgramTypeShortName: string
+	eduProgramChooseDate: string
+	professionInfo: string
+	courseId: number
+	courseName: string
+	groupName: string
+	isExistsGrantRequest: boolean
+	privilegeCategory: string
+	isDocEducationExists: boolean
+	isDocStudTicketExists: boolean
+	isDocAcademExists: boolean
+	isDocAcademGeneratedExists: boolean
+	academicMobilityList: string
+	expelEducationTypeName: string
+	academicLeaveTypeName: string
+	universityIdFrom: number
+	univNameFrom: string
+	isWithoutPzso: boolean
+	modifyDate: string
+	enrollInfo: string
+	orderOfEnrollmentId: number
+	foreignEnrollInfo: string
+	foreignOrderOfEnrollmentId: number
+	orderStatusDiploma: string
+	orderStatusTicket: string
+	orderStatusSvid: string
+	eduEndFIO: string
+	alienId: number
+	alienCount: number
+	foreignTypeId: number
+	foreignTypeName: string
+	budgetTransferCategoryId: number
+	budgetTransferCategoryName: string
+	konkursValue: number
+	sourceTypeName: string
+	isForPhdRenewal: boolean
+}
+
+/**
  * Параметри для пошуку студента в ЄДЕБО.
  */
 export interface EdboStudentSearchParams {
@@ -59,6 +146,9 @@ export interface EdboStudentSearchParams {
 }
 
 // ── Сервіс ────────────────────────────────────────────────────────
+
+/** HttpStatus — enum; `fetch` віддає status як number, тож порівнюємо як number. */
+const UNAUTHORIZED_STATUS: number = HttpStatus.UNAUTHORIZED
 
 @Injectable()
 export class EdboService {
@@ -202,8 +292,9 @@ export class EdboService {
 
 		// ── Розпізнавання протухлого токена ─────────────────────────────
 		const isTokenExpired =
-			response.status === HttpStatus.UNAUTHORIZED ||
-			(data as any)?.message === EdboService.DENIED_MESSAGE
+			response.status === UNAUTHORIZED_STATUS ||
+			(data as { message?: string } | null)?.message ===
+				EdboService.DENIED_MESSAGE
 
 		if (isTokenExpired && !isRetry) {
 			this.logger.warn('ЄДЕБО токен протух — оновлення і повтор запиту')
@@ -249,8 +340,10 @@ export class EdboService {
 	 * @param params - Параметри пошуку (universityId, qualificationGroupId, historyFilterId)
 	 * @returns Масив студентів, що відповідають критеріям
 	 */
-	async searchStudents(params: EdboStudentSearchParams): Promise<any[]> {
-		return this.post<any[]>('/api/studentEducations/list', {
+	async searchStudents(
+		params: EdboStudentSearchParams
+	): Promise<EdboStudentRecord[]> {
+		return this.post<EdboStudentRecord[]>('/api/studentEducations/list', {
 			universityId: params.universityId,
 			qualificationGroupId: params.qualificationGroupId ?? 9, // 9 = фаховий молодший бакалавр
 			historyFilterId: params.historyFilterId ?? 1, // 1 = навчаються

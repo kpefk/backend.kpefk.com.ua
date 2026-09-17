@@ -1,5 +1,8 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common'
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger'
+import { UserRole } from '@prisma/client'
+
+import { Authorization } from '@/auth/decorators/auth.decorator'
 
 import { CancellationAddParamsDto } from './dto/cancellation-add-params.dto'
 import { CancellationAddResponseDto } from './dto/cancellation-add-response.dto'
@@ -21,6 +24,10 @@ import { EntranceService } from './entrance.service'
 
 @ApiTags('Entrance — ЄДЕБО')
 @Controller('entrance')
+// Ті самі права, що й у EdboSyncController: роути роблять деструктивні
+// записи в ЄДЕБО (видалення актів, комісій) і віддають ПД вступників,
+// тому доступ лише для адміністратора.
+@Authorization(UserRole.ADMINISTRATOR)
 export class EntranceController {
 	constructor(private readonly entranceService: EntranceService) {}
 

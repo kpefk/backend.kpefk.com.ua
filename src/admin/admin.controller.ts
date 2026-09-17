@@ -44,7 +44,9 @@ export class AdminController {
 	 * Зведені лічильники для головної сторінки адміністратора.
 	 * @returns Кількості акаунтів, студентів, викладачів і груп.
 	 */
-	@ApiOperation({ summary: 'Зведена статистика для головної (адміністратор)' })
+	@ApiOperation({
+		summary: 'Зведена статистика для головної (адміністратор)'
+	})
 	@ApiResponse({ status: 200, description: 'Лічильники системи' })
 	@Get('dashboard-stats')
 	@HttpCode(HttpStatus.OK)

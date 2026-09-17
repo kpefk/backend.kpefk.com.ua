@@ -31,9 +31,7 @@ export class BaseOAuthService {
 	 * @param data - Дані, отримані від провайдера.
 	 * @returns Об'єкт з інформацією про користувача, включаючи назву провайдера.
 	 */
-	protected async extractUserInfo(
-		data: Partial<TypeUserInfo>
-	): Promise<TypeUserInfo> {
+	protected extractUserInfo(data: Partial<TypeUserInfo>): TypeUserInfo {
 		return {
 			...data,
 			provider: this.options.name
@@ -110,8 +108,8 @@ export class BaseOAuthService {
 			)
 		}
 
-		const user = await userRequest.json()
-		const userData = await this.extractUserInfo(user)
+		const user = (await userRequest.json()) as Partial<TypeUserInfo>
+		const userData = this.extractUserInfo(user)
 
 		return {
 			...userData,

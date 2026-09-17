@@ -55,15 +55,6 @@ function extractHours(text: string): number | null {
 	return isNaN(val) ? null : Math.round(val)
 }
 
-function extractFirstDate(text: string): Date | null {
-	const matches = [...text.matchAll(DATE_RE)]
-	for (const m of matches) {
-		const d = parseDate(`${m[1]}.${m[2]}.${m[3]}`)
-		if (d) return d
-	}
-	return null
-}
-
 function extractAllDates(text: string): Date[] {
 	return [...text.matchAll(DATE_RE)]
 		.map(m => parseDate(`${m[1]}.${m[2]}.${m[3]}`))
@@ -180,7 +171,7 @@ function tryParseFreeText(fragment: string): ParsedUpgrade | null {
 	const startDate = dates.length > 1 ? dates[0] : endDate
 
 	// Назва курсу: текст між «» або після «Курс» або після тире
-	let courseName = ''
+	let courseName: string
 	const angledMatch = fragment.match(/[«"](.*?)[»"]/)
 	if (angledMatch) {
 		courseName = angledMatch[1].trim()

@@ -703,7 +703,7 @@ export class SubjectAssignmentsService {
 	public async updateLesson(
 		id: string,
 		dto: UpdateLessonAssignmentDto,
-		userId: string
+		_userId: string
 	): Promise<LessonAssignmentDto> {
 		const lesson = await this.prisma.teacherLoadLessonAssignment.findUnique(
 			{

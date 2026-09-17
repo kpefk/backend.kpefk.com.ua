@@ -20,6 +20,11 @@ export interface BulkProvisionResult {
 		personFIO: string
 		message: string
 	}>
+	credentials: Array<{
+		personFIO: string
+		email: string
+		password: string
+	}>
 }
 
 @Injectable()
@@ -135,24 +140,31 @@ export class StudentService {
 			skipped: 0,
 			failed: 0,
 			total: students.length,
-			failures: []
+			failures: [],
+			credentials: []
 		}
 
 		for (const student of students) {
 			try {
 				const email = this.workspace.buildStudentEmail(student)
 
-				const { created } = await this.workspace.provisionAccount(
-					email,
-					student
-				)
+				const { created, password } =
+					await this.workspace.provisionAccount(email, student)
 
 				await this.prisma.student.update({
 					where: { id: student.id },
 					data: { corporateEmail: email }
 				})
 
-				created ? result.provisioned++ : result.skipped++
+				if (created) result.provisioned++
+				else result.skipped++
+				if (created && password) {
+					result.credentials.push({
+						personFIO: student.personFIO,
+						email,
+						password
+					})
+				}
 			} catch (error: unknown) {
 				result.failed++
 				const message =

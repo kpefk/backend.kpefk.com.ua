@@ -29,7 +29,7 @@ export class GoogleProvider extends BaseOAuthService {
 	 * @param data - Даних профілю користувача від Google.
 	 * @returns Об'єкт з інформацією про користувача.
 	 */
-	public async extractUserInfo(data: GoogleProfile): Promise<TypeUserInfo> {
+	public extractUserInfo(data: GoogleProfile): TypeUserInfo {
 		return super.extractUserInfo({
 			email: data.email,
 			name: data.name,

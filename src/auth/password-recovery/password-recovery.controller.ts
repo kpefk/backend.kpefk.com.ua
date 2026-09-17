@@ -4,12 +4,13 @@ import {
 	HttpCode,
 	HttpStatus,
 	Param,
-	Post,
-	UseGuards
+	Post
 } from '@nestjs/common'
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { Recaptcha } from '@nestlab/google-recaptcha'
+
+import { Public } from '../decorators/public.decorator'
 
 import { NewPasswordDto } from './dto/new-password.dto'
 import { ResetPasswordDto } from './dto/reset-password.dto'
@@ -20,6 +21,9 @@ import { PasswordRecoveryService } from './password-recovery.service'
  */
 @ApiTags('Відновлення паролю')
 @Controller('auth/password-recovery')
+// Відновлення паролю за визначенням доступне без сесії — користувач саме тому
+// сюди й прийшов, що не може увійти. Захист: reCAPTCHA + throttling + токен.
+@Public()
 export class PasswordRecoveryController {
 	/**
 	 * Constructor of the password recovery controller.
@@ -40,7 +44,6 @@ export class PasswordRecoveryController {
 	@ApiResponse({ status: 404, description: 'Користувача не знайдено' })
 	@Recaptcha()
 	@Throttle({ default: { limit: 5, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@Post('reset')
 	@HttpCode(HttpStatus.OK)
 	public async resetPassword(@Body() dto: ResetPasswordDto) {
@@ -60,7 +63,6 @@ export class PasswordRecoveryController {
 	@ApiResponse({ status: 400, description: 'Токен застарів' })
 	@Recaptcha()
 	@Throttle({ default: { limit: 5, ttl: 60000 } })
-	@UseGuards(ThrottlerGuard)
 	@Post('new/:token')
 	@HttpCode(HttpStatus.OK)
 	public async newPassword(

@@ -22,11 +22,13 @@ import {
 	ApiResponse,
 	ApiTags
 } from '@nestjs/swagger'
+import { Throttle } from '@nestjs/throttler'
 import { UserRole } from '@prisma/client'
 import type { Response } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
 import { Authorized } from '@/auth/decorators/authorized.decorator'
+import { UPLOAD_LIMITS } from '@/libs/common/upload-limits'
 
 import { DiplomaEdboService } from './diploma-edbo.service'
 import {
@@ -83,18 +85,32 @@ export class DiplomaController {
 
 	@ApiOperation({ summary: 'Предперегляд XML ЄДЕБО (без запису)' })
 	@ApiConsumes('multipart/form-data')
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post('import/preview')
 	@HttpCode(HttpStatus.OK)
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.diplomaImportXml, files: 1 }
+		})
+	)
 	public preview(@UploadedFile() file: Express.Multer.File) {
 		return this.importService.preview(file)
 	}
 
 	@ApiOperation({ summary: 'Імпорт XML ЄДЕБО: створення партії + дипломів' })
 	@ApiConsumes('multipart/form-data')
+	// Завантаження файлу: multipart тримається в памʼяті до ліміту розміру,
+	// тому обмежуємо ще й частоту, а не лише розмір.
+	@Throttle({ default: { ttl: 60_000, limit: 20 } })
 	@Post('import/commit')
 	@HttpCode(HttpStatus.CREATED)
-	@UseInterceptors(FileInterceptor('file'))
+	@UseInterceptors(
+		FileInterceptor('file', {
+			limits: { fileSize: UPLOAD_LIMITS.diplomaImportXml, files: 1 }
+		})
+	)
 	public commit(
 		@UploadedFile() file: Express.Multer.File,
 		@Body() dto: ImportCommitDto,

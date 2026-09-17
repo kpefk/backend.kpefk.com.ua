@@ -22,8 +22,13 @@ import {
 
 type Matrix = string[][]
 
-const norm = (v: unknown): string =>
-	v === null || v === undefined ? '' : String(v).replace(/\s+/g, ' ').trim()
+// Клітинки xlsx — це примітиви; об'єкт тут означав би несподівану форму
+// аркуша, і String(obj) дав би '[object Object]' замість помітної помилки.
+const norm = (v: unknown): string => {
+	if (typeof v === 'string') return v.replace(/\s+/g, ' ').trim()
+	if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+	return ''
+}
 
 /**
  * Розбирає назву компонента: витягує маркер інтеграції «*» та код «(ОКn)».
