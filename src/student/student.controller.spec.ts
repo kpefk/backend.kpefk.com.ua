@@ -1,18 +1,24 @@
 import { jest } from '@jest/globals'
 import { Test, TestingModule } from '@nestjs/testing'
 
-import { AuthGuard } from '@/auth/guards/auth.guard'
-import { RolesGuard } from '@/auth/guards/roles.guard'
-
-import { StudentController } from './student.controller'
-import { StudentService } from './student.service'
-
-jest.mock('@/user/user.service', () => ({
+jest.unstable_mockModule('@/user/user.service', () => ({
 	UserService: class UserService {}
 }))
 
+let AuthGuard: typeof import('@/auth/guards/auth.guard').AuthGuard
+let RolesGuard: typeof import('@/auth/guards/roles.guard').RolesGuard
+let StudentController: typeof import('./student.controller').StudentController
+let StudentService: typeof import('./student.service').StudentService
+
 describe('StudentController', () => {
 	let controller: InstanceType<typeof StudentController>
+
+	beforeAll(async () => {
+		;({ AuthGuard } = await import('@/auth/guards/auth.guard'))
+		;({ RolesGuard } = await import('@/auth/guards/roles.guard'))
+		;({ StudentController } = await import('./student.controller'))
+		;({ StudentService } = await import('./student.service'))
+	})
 
 	beforeEach(async () => {
 		const studentService = {
