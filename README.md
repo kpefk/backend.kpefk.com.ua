@@ -2,12 +2,12 @@
 
 > Backend of the enterprise educational management system for **KPEFK LNTU**
 
-[![NestJS](https://img.shields.io/badge/NestJS-v11-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![NestJS](https://img.shields.io/badge/NestJS-v12-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-v7-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-v5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-v6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
 ---
 
@@ -24,26 +24,59 @@ See the GNU Affero General Public License for more details.
 
 ## Project overview
 
-**MyKPEFK** is the server-side of the information system for Kovel Industrial and Economic Vocational College of Lutsk NTU (KPEFK LNTU). It manages users (students, teachers, administration), academic groups, classroom inventory, curricula, teacher load assignments, electives, and provides integration with the EDBO national education registry (ЄДЕБО). Student and teacher records are synchronized from EDBO on a daily schedule and can also be triggered manually via the API.
+**MyKPEFK** is the server-side of the information system for Kovel Industrial and Economic Vocational College of Lutsk NTU (KPEFK LNTU). It covers the full academic cycle: admissions, contingent management, curriculum planning, teacher load, timetabling, the electronic attendance and grade journal, and diploma issuance — plus integration with the EDBO national education registry (ЄДЕБО). Student and teacher records are synchronized from EDBO on a daily schedule and can also be triggered manually via the API.
+
+The API surface is roughly **330 routes**, registered by 26 feature modules.
+Every route requires authentication by default; see
+[Security model](#security-model).
 
 ---
 
 ## Main capabilities
 
+### Identity and access
+
 - **Authentication** — session-based auth, Google OAuth 2.0, two-factor authentication (2FA: TOTP + email), password recovery
-- **Role-based access control** — seven roles from `STUDENT` to `ADMINISTRATOR`
+- **Role-based access control** — seven roles from `STUDENT` to `ADMINISTRATOR`; routes are closed by default
+- **Rate limiting** — global limit on every route, stricter limits on login, password recovery, EDBO sync and uploads
+
+### Contingent
+
 - **Students** — full profile synchronized from EDBO, document fields (RNOKPP, passport, student ticket), corporate email
-- **Teachers (Staff)** — full profile synchronized from EDBO, position, faculty, department, rate (up to 1.5), qualification upgrades tracking
+- **Teachers (Staff)** — profile from EDBO, position, faculty, department, rate (up to 1.5), qualification upgrades and attestation tracking
 - **Academic groups** — derived from student data during EDBO sync; curator assignment managed locally
 - **Group history** — tracks why and when a student moved between groups
-- **Classrooms** — classroom inventory with photos and Google Drive passport PDF
+- **Group leader (curator) workspace** — group roster, parent contact records, audit log, export
+- **Subgroups** — splitting a group for practical/lab sessions
+- **Admissions** — annual EDBO snapshots of offers and applications, reports, PII purge on archival
+
+### Academic planning
+
 - **Curriculum domain** — specialties, educational programs, curricula with versioning, sections, components, terms, time budget, academic calendar, elective blocks, group curriculum assignments
+- **Curriculum import** — parsing curricula from `.xls` workbooks with preview before commit
 - **Working curricula** — operational layer for specific academic year, with approval workflow (pedagogical council + trade union)
+- **Individual plans** — per-student individual study plans
 - **Teacher load** — subject/lesson assignment generation from working curricula, order confirmation workflow, per-teacher load summary with 720×rate hour limit validation
 - **Electives** — elective block seasons, offerings catalog, student selection (voluntary + assigned), admin management with auto-assign, group stats, enrollment lists, annual campaigns with progress tracking
-- **EDBO synchronization** — incremental daily cron sync + manual trigger endpoints (admin only); student study programs sync
-- **Google Drive** — file storage via service account (classroom passport PDFs)
-- **Email** — SMTP delivery for 2FA codes, password reset, account verification
+- **Schedule** — timetable generation and management for the schedule dispatcher
+
+### Academic process
+
+- **Attendance and grades journal** — lesson sessions, attendance records, 12-point grading, date → parity/term resolution, role-based editing windows
+- **Grade sheets (відомості)** — generated DOCX statements per group and discipline
+- **Rating** — student rating calculation and reports
+- **Surveys** — survey management with CRUD and result aggregation
+- **Credit recognition** — recognition of previously earned credits
+- **Academic mobility** — academic mobility records
+- **Diplomas** — EDBO ODM XML import, consolidated grade sheet, diploma and supplement generation from per-specialty DOCX templates
+
+### Integrations and operations
+
+- **EDBO synchronization** — incremental daily cron sync + manual trigger endpoints (admin only); students, staff, study programs, university info
+- **Google Workspace / Drive / Classroom** — corporate email provisioning, file storage via service account
+- **Email** — SMTP delivery for 2FA codes, password reset, account verification (React Email templates)
+- **Health checks** — `GET /health` reporting PostgreSQL and Redis state for orchestrator probes
+- **Startup config validation** — Zod schema; a missing or malformed variable aborts the boot
 
 ---
 
@@ -51,8 +84,10 @@ See the GNU Affero General Public License for more details.
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| [NestJS](https://nestjs.com/) | ^11 | Core framework |
+| [NestJS](https://nestjs.com/) | ^12 | Core framework |
 | [Prisma](https://www.prisma.io/) | ^7 | ORM |
+| [@prisma/adapter-pg](https://www.npmjs.com/package/@prisma/adapter-pg) | ^7.5 | Driver adapter (explicit `pg` pool) |
+| [pg](https://node-postgres.com/) | ^8.20 | PostgreSQL driver |
 | [PostgreSQL](https://www.postgresql.org/) | 17 | Primary database |
 | [Redis](https://redis.io/) | 7 | Session store |
 | [connect-redis](https://github.com/tj/connect-redis) | ^9 | Redis session store adapter |
@@ -60,18 +95,27 @@ See the GNU Affero General Public License for more details.
 | [express-session](https://github.com/expressjs/session) | ^1.19 | Session middleware |
 | [cookie-parser](https://github.com/expressjs/cookie-parser) | ^1.4 | Cookie parsing |
 | [Bun](https://bun.sh/) | >=1.3.10 | Package manager / runtime |
-| [TypeScript](https://www.typescriptlang.org/) | ^5.9 | Language |
-| [@nestjs/schedule](https://docs.nestjs.com/techniques/task-scheduling) | ^6 | Cron jobs |
-| [Swagger](https://swagger.io/) | ^11 | API docs at `/docs` |
+| [TypeScript](https://www.typescriptlang.org/) | 6 | Language |
+| [@nestjs/schedule](https://docs.nestjs.com/techniques/task-scheduling) | ^12 | Cron jobs |
+| [@nestjs/throttler](https://docs.nestjs.com/security/rate-limiting) | ^6.5 | Rate limiting (global guard) |
+| [@nestjs/terminus](https://docs.nestjs.com/recipes/terminus) | ^12 | Health checks at `/health` |
+| [helmet](https://helmetjs.github.io/) | ^8.2 | Security headers |
+| [zod](https://zod.dev/) | ^4.6 | Environment variable validation |
+| [Swagger](https://swagger.io/) | ^12 | API docs at `/docs` (dev only) |
 | [Docker Compose](https://www.docker.com/) | — | Local PostgreSQL + Redis |
 | [argon2](https://github.com/ranisalt/node-argon2) | ^0.44 | Password hashing |
 | [class-validator](https://github.com/typestack/class-validator) | ^0.15 | DTO validation |
 | [class-transformer](https://github.com/typestack/class-transformer) | ^0.5 | DTO transformation |
+| [multer](https://www.npmjs.com/package/multer) | ^2.2 | File uploads (size-limited) |
 | [React Email](https://react.email/) | ^1 | Email templates |
-| [googleapis](https://www.npmjs.com/package/googleapis) | ^171 | Google Drive + OAuth |
+| [googleapis](https://www.npmjs.com/package/googleapis) | ^171 | Google Workspace / Drive / OAuth |
 | [otplib](https://www.npmjs.com/package/otplib) | ^12 | TOTP 2FA |
 | [qrcode](https://www.npmjs.com/package/qrcode) | ^1.5 | QR code generation for TOTP |
 | [@nestlab/google-recaptcha](https://www.npmjs.com/package/@nestlab/google-recaptcha) | ^3.11 | reCAPTCHA validation |
+| [docx](https://www.npmjs.com/package/docx) / [docxtemplater](https://docxtemplater.com/) | ^9.7 / ^3.69 | Grade sheets, diploma generation |
+| [xlsx](https://www.npmjs.com/package/xlsx) | ^0.18 | Curriculum `.xls` import |
+| [fast-xml-parser](https://www.npmjs.com/package/fast-xml-parser) | ^5.9 | EDBO ODM XML parsing |
+| [Jest](https://jestjs.io/) | ^30 | Unit tests (ESM runtime) |
 
 ---
 
@@ -80,60 +124,73 @@ See the GNU Affero General Public License for more details.
 ```
 src/
 ├── auth/                   # Session auth, Google OAuth, 2FA, password recovery
-│   ├── guards/             # AuthGuard, RolesGuard, ProviderGuard
-│   ├── decorators/         # @Authorization(), @Roles(), @Authorized()
+│   ├── guards/             # AuthGuard, RolesGuard, AuthProviderGuard
+│   ├── decorators/         # @Authorization(), @Roles(), @Authorized(), @Public()
 │   ├── password-recovery/
 │   ├── provider/           # Google OAuth
 │   └── two-factor-auth/
-├── user/                   # User profile, password change
-├── admin/                  # Admin user management
-├── student/                # Student-specific endpoints
-├── staff/                  # Teacher-specific endpoints, qualification upgrades
+├── user/                   # User profile, password and email change
+├── admin/                  # Admin user management, dashboard statistics
+├── student/                # Student-specific endpoints, corporate email provisioning
+├── staff/                  # Teachers, qualification upgrades, attestations
 ├── groups/                 # Groups, curator assignment, transfer history
+├── group-leader/           # Curator workspace: roster, parent info, audit log
+├── subgroups/              # Group splitting for practical/lab sessions
 ├── classroom/              # Classroom inventory, photos, Google Drive PDFs
 ├── curriculum/             # Full curriculum domain
 │   ├── specialties/        # Specialty CRUD
 │   ├── educational-programs/ # Educational program (OPP) CRUD
 │   ├── curricula/          # Curriculum container CRUD
-│   ├── curriculum-versions/ # Version management, sections, components, terms, projections
+│   ├── curriculum-versions/ # Versions, sections, components, terms, projections
 │   ├── working-curricula/  # Working curriculum + component terms for academic year
 │   ├── group-assignments/  # Group ↔ curriculum version binding
-│   └── teacher-load/       # Subject/lesson assignment generation, confirmation workflow
-├── electives/              # Elective catalog, selection, admin management (v1 + v2)
-│   ├── electives.controller.ts       # Season/offering/selection management
-│   ├── electives.service.ts          # Core elective logic
-│   ├── elective-seasons.controller.ts # Campaigns, group confirmation, student blocks
-│   └── elective-seasons.service.ts   # Campaign lifecycle and progress
+│   ├── individual-plans/   # Per-student individual study plans
+│   ├── import/             # Curriculum import from .xls workbooks
+│   └── teacher-load/       # Subject/lesson assignment generation, confirmation
+├── electives/              # Elective catalog, selection, campaigns
+│   ├── electives.controller.ts        # Season/offering/selection management
+│   └── elective-seasons.controller.ts # Campaigns, group confirmation, student blocks
+├── schedule/               # Timetable generation and management
+├── attendance/             # Electronic journal: lesson sessions, attendance records
+├── grades/                 # 12-point grading, grade sheets (відомості) as DOCX
+├── rating/                 # Student rating calculation and reports
+├── surveys/                # Survey management and result aggregation
+├── credit-recognition/     # Recognition of previously earned credits
+├── academic-mobility/      # Academic mobility records
+├── diploma/                # EDBO XML import, diploma + supplement generation
+├── admissions/             # Admission campaign snapshots and reports
+├── health/                 # /health — PostgreSQL + Redis probes
 ├── edbo/
 │   ├── core/               # EdboService: HTTP client, OAuth token management
-│   ├── sync/               # EdboSyncService: incremental sync, SyncState, cron + manual trigger
+│   ├── sync/               # EdboSyncService: incremental sync, SyncState, cron
 │   ├── entrance/           # Admission campaign API (DTO wrappers for EDBO)
 │   ├── students/           # Student education history and exam API
-│   ├── university/         # University staff API
+│   ├── university/         # University info API
 │   ├── accreditation/      # Accreditation data API
 │   ├── dictionary/         # EDBO dictionary endpoints
 │   ├── documents/          # EDBO document endpoints
 │   ├── persons/            # EDBO person endpoints
 │   └── listeners/          # External listeners API
 ├── libs/
-│   ├── common/             # Shared utilities and decorators
+│   ├── common/             # Utilities, decorators, filters, upload limits
 │   ├── google-drive/       # Google Drive service account integration
+│   ├── google-workspace/   # Corporate account provisioning
+│   ├── google-classroom/   # Google Classroom integration
 │   └── mail/               # @nestjs-modules/mailer + React Email templates
-├── prisma/                 # PrismaService (global singleton)
-├── config/                 # Config loaders: mailer, OAuth providers, reCAPTCHA
-├── redis.config.ts         # Redis connection config
-├── main.ts                 # Application entry point
+├── prisma/                 # PrismaService (global singleton, explicit pool size)
+├── config/                 # redis, mailer, OAuth providers, reCAPTCHA, env schema
+└── main.ts                 # Application entry point
 ```
 
 ```
 prisma/
-├── schema.prisma           # Single source of truth for the database schema
+├── schema.prisma           # Single source of truth for the database schema (68 models)
 ├── seed.ts                 # Database seed script
-├── config.ts               # Prisma config (schema path, seed command)
 └── migrations/             # Prisma migration files
+.github/workflows/ci.yml    # CI: typecheck, lint, test, build
+prisma.config.ts            # Prisma config (schema path, seed command, datasource)
 docker-compose.yml          # Starts PostgreSQL (port 5433) and Redis (port 6379)
 .env.example                # All required environment variables with descriptions
-redis.config.ts             # Redis connection configuration
 ```
 
 ---
@@ -151,6 +208,67 @@ Defined in `prisma/schema.prisma` as the `UserRole` enum:
 | `DEPUTY_DIRECTOR` | Generate teacher load, manage curricula |
 | `DIRECTOR` | Confirm teacher load orders, approve working curricula |
 | `ADMINISTRATOR` | Full system access |
+
+---
+
+## Security model
+
+### Routes are closed by default
+
+`AuthGuard` is bound globally via `APP_GUARD`, so **every route requires a valid
+session unless it is explicitly marked `@Public()`**. Forgetting a decorator now
+fails closed (401) instead of silently exposing an endpoint.
+
+```ts
+@Authorization(UserRole.ADMINISTRATOR)   // AuthGuard + RolesGuard
+@Authorization()                          // AuthGuard only — any signed-in user
+@Public()                                 // opt out of the global guard
+```
+
+`@Authorization(...roles)` adds `RolesGuard` on top. A bare `@Roles()` without
+`UseGuards(RolesGuard)` is **not** enforced — always go through
+`@Authorization()`.
+
+The public allowlist is intentionally small: login, register, logout, the two
+password-recovery routes, the OAuth connect/callback pair, the email-change
+confirmation link, `/health`, and the two Google Drive proxy routes that serve
+classroom photos and passport PDFs to `<img>`/`<embed>` without credentials.
+
+### Rate limiting
+
+`ThrottlerGuard` is also global, ahead of `AuthGuard`, so floods are rejected
+before any database lookup.
+
+| Scope | Limit |
+|-------|-------|
+| Default (all routes) | 60 / min |
+| Login, register, password recovery, email-change request | 5 / min |
+| EDBO sync (`/edbo/sync/*`) | 5 / min |
+| Email-change confirmation link | 10 / min |
+| File uploads (6 endpoints) | 20 / min |
+| Classroom photo proxy | 120 / min |
+| Classroom passport proxy | 60 / min |
+| `/health` | 300 / min |
+
+Per-route overrides use `@Throttle()` alone — do **not** add
+`@UseGuards(ThrottlerGuard)` next to it, or the request is counted twice and the
+effective limit is halved.
+
+### Other protections
+
+- **Uploads** are capped by `multer` `limits.fileSize` (see
+  [`src/libs/common/upload-limits.ts`](src/libs/common/upload-limits.ts)).
+  `MaxFileSizeValidator` alone is not enough — it runs only after the whole file
+  is already buffered in memory.
+- **Validation** — global `ValidationPipe` with `whitelist` and
+  `forbidNonWhitelisted` (mass-assignment protection, data minimisation).
+- **Secrets** — `SESSION_SECRET` and `COOKIES_SECRET` must be at least 32 chars;
+  a short secret is a warning in development and fatal in production.
+- **Security headers** — `helmet`. `crossOriginResourcePolicy` is deliberately
+  `cross-origin`: the frontend lives on another origin and loads classroom media
+  directly.
+- **Swagger** is exposed in development only.
+- **reCAPTCHA** guards login, register and password recovery.
 
 ---
 
@@ -175,6 +293,16 @@ Defined in `prisma/schema.prisma` as the `UserRole` enum:
 | `ElectiveOffering` | Specific discipline available to students within a season |
 | `StudentElectiveSelection` | Canonical record of student's elective choice |
 | `Classroom` | Classroom inventory with photos and passport PDF |
+| `Schedule` / `ScheduleEntry` | Generated timetable and its individual slots |
+| `LessonSession` | A held lesson — the anchor of the electronic journal |
+| `AttendanceRecord` | Per-student attendance and 12-point grade for a session |
+| `StudentSubgroup` | Group split for practical and lab sessions |
+| `Diploma` / `DiplomaTemplate` | Diploma order imported from EDBO, and its DOCX template |
+| `ParentInfo` / `AuditLog` | Curator-maintained parent contacts and change trail |
+| `SyncState` | Key-value cursors for incremental EDBO sync |
+
+> The schema currently defines **68 models**; the table lists the load-bearing
+> ones. [`prisma/schema.prisma`](prisma/schema.prisma) is the source of truth.
 
 ---
 
@@ -225,6 +353,11 @@ EDBO (ЄДЕБО) is the national education registry. This backend synchronizes 
 | `POST /edbo/sync/staff` | Sync staff only |
 | `POST /edbo/sync/all` | Full sync (students + staff + documents) |
 | `POST /edbo/sync/study-programs` | Sync educational programs |
+| `POST /edbo/sync/university` | Sync institution info (also runs weekly, Mon 03:00) |
+
+These endpoints are rate limited to 5 requests per minute: a full pass costs
+thousands of HTTP calls to EDBO, and concurrent runs can exhaust the quota on
+the EDBO side.
 
 **Important:** sync uses `upsert` operations and deliberately does not overwrite locally managed attributes (e.g. `Group.curatorId`). Any change to sync logic must account for this.
 
@@ -266,8 +399,21 @@ Key variables:
 | `EDBO_USER_LOGIN` / `EDBO_USER_PASSWORD` | EDBO account credentials |
 | `MAIL_HOST` / `MAIL_PASSWORD` | SMTP configuration |
 | `GOOGLE_RECAPTCHA_SECRET_KEY` | Google reCAPTCHA v3 secret |
+| `AUTH_SECRET` | Optional. Key for encrypting TOTP secrets; falls back to `SESSION_SECRET` |
+| `DATABASE_POOL_MAX` | Optional. Max DB connections per instance (default `10`) |
 
 See [`.env.example`](.env.example) for the full list with descriptions.
+
+**Variables are validated at startup** against the Zod schema in
+[`src/config/env.validation.ts`](src/config/env.validation.ts). A missing or
+malformed value aborts the boot with an explicit message — for example:
+
+```
+Error: Config validation error: MAIL_LOGIN: MAIL_LOGIN має бути email-адресою
+```
+
+When adding a new variable, add it to the schema as well, otherwise it stays
+unvalidated.
 
 ---
 
@@ -283,17 +429,25 @@ cp .env.example .env
 # 3. Start PostgreSQL and Redis
 docker compose up -d
 
-# 4. Run database migrations
-bunx prisma migrate deploy
-
-# 5. Generate Prisma client
+# 4. Generate the Prisma client (types are not committed to the repo)
 bunx prisma generate
+
+# 5. Run database migrations
+bunx prisma migrate deploy
 
 # 6. Start in development mode (watch)
 bun run start:dev
 ```
 
 The server starts at `http://localhost:4000` (or the port set in `APPLICATION_PORT`).
+
+Verify it came up correctly:
+
+```bash
+curl http://localhost:4000/health
+```
+
+Swagger UI is then available at `http://localhost:4000/docs`.
 
 **Production build:**
 
@@ -312,8 +466,8 @@ Schema: [`prisma/schema.prisma`](prisma/schema.prisma)
 # Create a new migration after changing schema.prisma
 bunx prisma migrate dev --name <migration-name>
 
-# Apply migrations in production / CI
-bunx prisma migrate deploy
+# Apply migrations in production
+bun run migrate:deploy
 
 # Regenerate Prisma client (after schema changes)
 bunx prisma generate
@@ -333,25 +487,45 @@ bunx prisma db seed
 
 | Namespace | Path prefix | Description |
 |-----------|-------------|-------------|
-| Auth | `/auth/` | Login, register, logout, profile, refresh, 2FA |
-| Users | `/users/` | Profile, password change |
-| Admin | `/admin/` | User management |
-| Students | `/students/` | Student list and details |
-| Staff | `/staff/` | Teachers, qualification upgrades |
+| Auth | `/auth/` | Login, register, logout, profile |
+| 2FA | `/auth/2fa/` | TOTP setup/verify/disable, email 2FA |
+| OAuth | `/auth/oauth/` | Google connect and callback |
+| Password recovery | `/auth/password-recovery/` | Reset request, new password |
+| Users | `/users/` | Profile, password and email change |
+| Admin | `/admin/` | User management, dashboard statistics |
+| Students | `/students/` | Student list, details, corporate email |
+| Staff | `/staff/` | Teachers, qualification upgrades, attestations |
+| Attestations | `/attestations/` | Attestation tracker |
 | Groups | `/groups/` | Groups, curator assignment |
-| Classrooms | `/classrooms/` | CRUD, photos, passport |
+| Group leader | `/group-leader/` | Curator roster, parent info, export |
+| Subgroups | `/subgroups/` | Practical/lab subgroup management |
+| Classrooms | `/classrooms/` | CRUD, photos, passport PDF |
 | Specialties | `/specialties/` | Specialty management |
 | Educational Programs | `/educational-programs/` | OPP management |
 | Curricula | `/curricula/` | Curriculum container CRUD |
-| Curriculum Versions | `/curriculum-versions/` | Version management, sections, components, terms |
-| Working Curricula | `/working-curricula/` | Operational plans, component terms, group assignments |
+| Curriculum import | `/curricula/import/` | `.xls` preview and commit |
+| Curriculum structure | `/curriculum-versions/`, `/curriculum-sections/`, `/curriculum-components/`, `/curriculum-component-terms/`, `/curriculum-component-projections/`, `/elective-blocks/`, `/time-budget-entries/`, `/academic-calendar-entries/` | Version content |
+| Working Curricula | `/working-curricula/`, `/working-component-terms/` | Operational plans for an academic year |
 | Group Curriculum Assignments | `/group-curriculum-assignments/` | Group ↔ curriculum binding |
-| Teacher Load | `/teacher-load/` | Load summaries, subject/lesson assignments, confirmation |
-| Electives | `/electives/` | Catalog, selections, admin management (v1 + v2), campaigns |
+| Individual plans | `/individual-plans/` | Per-student study plans |
+| Teacher Load | `/teacher-load/` | Load summaries, assignments, confirmation |
+| Electives | `/electives/` | Catalog, selections, campaigns |
+| Schedule | `/schedule/` | Timetable generation and management |
+| Attendance | `/attendance/` | Lesson sessions, attendance, summary |
+| Grades | `/grades/` | Grades and grade sheets (відомості) |
+| Rating | `/rating/` | Student rating |
+| Surveys | `/surveys/` | Surveys and results |
+| Credit recognition | `/credit-recognitions/` | Recognition of earned credits |
+| Academic mobility | `/academic-mobility/` | Mobility records |
+| Diplomas | `/diplomas/`, `/diploma-templates/` | Import, generation, templates |
+| Admissions | `/admissions/` | Admission campaign reports and sync |
 | EDBO Sync | `/edbo/sync/` | Manual sync triggers |
-| Entrance | `/entrance/` | Admission campaign |
+| University | `/university/` | Institution info from EDBO |
+| Entrance | `/entrance/` | EDBO admission campaign API (admin only) |
+| Health | `/health/` | Liveness/readiness probe (public) |
 
-Full interactive documentation available at Swagger UI (`/docs`).
+Full interactive documentation is available at Swagger UI (`/docs`) — **in
+development only**; it is not mounted in production.
 
 ---
 
@@ -366,6 +540,17 @@ Full interactive documentation available at Swagger UI (`/docs`).
 - **Prefer simple, production-safe solutions.** Avoid adding queues, caches, or new infrastructure unless the problem cannot be solved without it.
 - **Avoid large refactors in a single change.** Make focused, reviewable commits. Refactoring is a separate task from feature work.
 - **Logging:** use `new Logger(ClassName.name)` — not `console.log`.
+- **Routes are closed by default.** A new controller needs `@Authorization(...)`;
+  only add `@Public()` when the endpoint is genuinely meant to be reachable
+  without a session, and say why in a comment.
+- **CI must stay green.** `typecheck`, `lint`, `test` and `build` all block the
+  merge, and lint is currently at **zero** problems — keep it there. Run
+  `bun run lint:ci` locally before pushing.
+- **New environment variables go into the Zod schema** as well as `.env.example`.
+- **Before "fixing" an audit finding, check reachability.** Some advisories in
+  `bun audit` point at packages that are only reachable from build tooling, or
+  at a templating engine this project does not use. Updating them blind can
+  break unrelated code.
 
 ---
 
@@ -453,11 +638,15 @@ limited at 300 requests per minute, well above normal probe frequency.
 
 ## API documentation
 
-Swagger UI is available at runtime:
+Swagger UI is generated from the controllers and their DTOs:
 
 ```
 http://localhost:4000/docs
 ```
+
+It is mounted **only when `NODE_ENV=development`**, so the full API surface is
+not exposed in production. To document a new endpoint, annotate it with
+`@ApiOperation` / `@ApiResponse` — there is no separate spec file to maintain.
 
 ---
 
