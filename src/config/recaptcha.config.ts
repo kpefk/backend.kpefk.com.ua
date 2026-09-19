@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config'
 import { GoogleRecaptchaModuleOptions } from '@nestlab/google-recaptcha'
 import type { Request } from 'express'
 
-import { isDev } from '@/libs/common/utils/is-dev.util'
+import { environmentPolicy } from './environment'
 
 /**
  * Конфігурація для Google reCAPTCHA.
@@ -18,5 +18,5 @@ export const getRecaptchaConfig = (
 ): GoogleRecaptchaModuleOptions => ({
 	secretKey: configService.getOrThrow<string>('GOOGLE_RECAPTCHA_SECRET_KEY'),
 	response: (req: Request) => String(req.headers.recaptcha ?? ''),
-	skipIf: isDev(configService)
+	skipIf: !environmentPolicy(configService).enforceRecaptcha
 })

@@ -13,9 +13,9 @@ import helmet from 'helmet'
 import { createClient } from 'redis'
 
 import { AppModule } from './app.module'
+import { APP_ENV, APP_POLICY } from './config/environment'
 import { AllExceptionsFilter } from './libs/common/filters/all-exceptions.filter'
 import { DecimalSerializerInterceptor } from './libs/common/interceptors/decimal-serializer.interceptor'
-import { IS_DEV_ENV } from './libs/common/utils/is-dev.util'
 import { ms, StringValue } from './libs/common/utils/ms.util'
 import { parseBoolean } from './libs/common/utils/parse-boolean.util'
 
@@ -40,11 +40,10 @@ function assertStrongSecrets(configService: ConfigService): void {
 		const value = configService.getOrThrow<string>(key)
 		if (value.length >= MIN_SECRET_LENGTH) continue
 		const message = `${key} коротший за ${MIN_SECRET_LENGTH} символів — згенеруйте стійкий секрет (openssl rand -base64 48)`
-		if (IS_DEV_ENV) {
-			new Logger('Bootstrap').warn(message)
-		} else {
+		if (APP_POLICY.enforceStrongSecrets) {
 			throw new Error(message)
 		}
+		new Logger('Bootstrap').warn(message)
 	}
 }
 
@@ -62,7 +61,9 @@ async function bootstrap() {
 	app.use(
 		helmet({
 			crossOriginResourcePolicy: { policy: 'cross-origin' },
-			...(IS_DEV_ENV ? { contentSecurityPolicy: false } : {})
+			...(APP_POLICY.relaxContentSecurityPolicy
+				? { contentSecurityPolicy: false }
+				: {})
 		})
 	)
 
@@ -108,9 +109,9 @@ async function bootstrap() {
 	// не встигає дренувати активні запити при рестарті/деплої.
 	app.enableShutdownHooks()
 
-	// Swagger documentation — exposed only in development to avoid leaking the
-	// full API surface in production.
-	if (IS_DEV_ENV) {
+	// Swagger documentation — відкрита в development і test (staging), закрита
+	// в production, щоб не світити повну поверхню API.
+	if (APP_POLICY.exposeSwagger) {
 		const swaggerConfig = new DocumentBuilder()
 			.setTitle('MyKPEFK Backend')
 			.setDescription('API documentation for MyKPEFK system')
@@ -169,6 +170,17 @@ async function bootstrap() {
 	})
 
 	await app.listen(configService.getOrThrow<number>('APPLICATION_PORT'))
+
+	// Тір і його ключові запобіжники — в лог на старті. Інцидент «а чому staging
+	// пише в ЄДЕБО» має діагностуватись першим рядком логу, а не розслідуванням.
+	new Logger('Bootstrap').log(
+		`Тір: ${APP_ENV} · ЄДЕБО-записи: ${
+			APP_POLICY.allowEdboWrites ? 'ДОЗВОЛЕНІ' : 'заблоковані'
+		} · Swagger: ${APP_POLICY.exposeSwagger ? 'увімкнено' : 'вимкнено'} ` +
+			`· reCAPTCHA: ${
+				APP_POLICY.enforceRecaptcha ? 'увімкнено' : 'вимкнено'
+			}`
+	)
 }
 
 /**

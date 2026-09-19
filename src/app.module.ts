@@ -29,12 +29,12 @@ import { GradesModule } from './grades/grades.module'
 import { GroupLeaderModule } from './group-leader/group-leader.module'
 import { GroupsModule } from './groups/groups.module'
 import { HealthModule } from './health/health.module'
-import { IS_DEV_ENV } from './libs/common/utils/is-dev.util'
 import { GoogleDriveModule } from './libs/google-drive/google-drive.module'
 import { MailModule } from './libs/mail/mail.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { RatingModule } from './rating/rating.module'
 import { ScheduleModule as ScheduleFeatureModule } from './schedule/schedule.module'
+import { SetupModule } from './setup/setup.module'
 import { StaffModule } from './staff/staff.module'
 import { StudentModule } from './student/student.module'
 import { SubgroupsModule } from './subgroups/subgroups.module'
@@ -50,7 +50,10 @@ import { UserModule } from './user/user.module'
 		// ЄДЕБО-синхронізація, завантаження файлів, /health).
 		ThrottlerModule.forRoot([{ name: 'default', ttl: 60000, limit: 60 }]),
 		ConfigModule.forRoot({
-			ignoreEnvFile: !IS_DEV_ENV,
+			// Env-файли тіра вже застосовані в `config/environment.ts` до збирання
+			// метаданих модулів (спершу `.env.<tier>`, потім базовий `.env`), тож
+			// ConfigModule читає готовий process.env однаково в усіх тірах.
+			ignoreEnvFile: true,
 			isGlobal: true,
 			load: [redisConfig],
 			// Nest 12 приймає будь-яку Standard Schema — Zod підходить напряму.
@@ -94,6 +97,7 @@ import { UserModule } from './user/user.module'
 		ElectivesModule,
 		GroupLeaderModule,
 		ScheduleFeatureModule,
+		SetupModule,
 		DiplomaModule,
 		SubgroupsModule,
 		AttendanceModule,

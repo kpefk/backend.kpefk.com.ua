@@ -1,94 +1,44 @@
-import 'dotenv/config'
-import { PrismaClient, UserRole } from '@prisma/client'
+// Побічний ефект імпорту: вантажить env-файли поточного тіра (`.env.<tier>`,
+// потім базовий `.env`). Через `dotenv/config` тут читався лише базовий `.env`,
+// тобто `NODE_ENV=test prisma db seed` засівав би DEV-базу.
+import '../src/config/environment'
+import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { hash } from 'argon2'
 
 const adapter = new PrismaPg({ connectionString: process.env.POSTGRES_URI })
 const prisma = new PrismaClient({ adapter })
 
-// ── Конфігурація адміністратора ───────────────────────────────────
-
-const ADMIN_CONFIG = {
-  email: 's.tycmhenko@kpefk.com.ua',
-  password: 'testAdmin',
-} as const
-
-// ── Main ──────────────────────────────────────────────────────────
-
 async function main() {
   console.log('🌱 Starting the database seeding process...\n')
 
-  await seedAdministrator()
   await seedCurriculumDomain()
 
   console.log('\n✅ Сідінг завершено успішно.')
 }
 
-async function seedAdministrator() {
-  console.log('👤 Seeding administrator...')
-
-  const hashedPassword = await hash(ADMIN_CONFIG.password)
-
-  const { user, created } = await prisma.$transaction(async (tx) => {
-    const existing = await tx.user.findUnique({
-      where: { email: ADMIN_CONFIG.email },
-    })
-
-    if (existing) {
-      // Оновлюємо пароль і роль якщо юзер вже існує
-      const updated = await tx.user.update({
-        where: { email: ADMIN_CONFIG.email },
-        data: {
-          password: hashedPassword,
-          role: UserRole.ADMINISTRATOR,
-          isActive: true,
-        },
-      })
-      return { user: updated, created: false }
-    }
-
-    const created = await tx.user.create({
-      data: {
-        email: ADMIN_CONFIG.email,
-        password: hashedPassword,
-        role: UserRole.ADMINISTRATOR,
-        isActive: true,
-        isFirstLogin: true,
-        isTwoFactorEnabled: false,
-      },
-    })
-    return { user: created, created: true }
-  })
-
-  if (created) {
-    console.log(`  ✔ Created administrator: ${user.email}`)
-  } else {
-    console.log(`  ↺ Updated existing administrator: ${user.email}`)
-  }
-
-  console.log(`  🔑 Password: ${ADMIN_CONFIG.password}`)
-  console.log(`  🆔 ID: ${user.id}`)
-  console.log(`  📋 Role: ${user.role}`)
-}
-
-
-
-// ── Curriculum domain seed ────────────────────────────────────────
-
 async function seedCurriculumDomain() {
   console.log('\n📚 Seeding curriculum domain (specialties + OPP)...')
 
   // Specialties — based on real college curricula (F3.pdf, D3.pdf)
+  // normativeEcts — обсяг ОПП зі стандарту ФПО за спеціальністю (розд. 3 стандарту).
+  // Заклад веде власні коди ('F3', 'D3'), тому зіставлення з кодом переліку
+  // (Постанова КМУ № 266) зафіксоване тут явно.
   const specialties = [
     {
       code: 'F3',
       name: "Комп'ютерні науки",
       shortName: 'КН',
+      normativeEcts: 180,
+      standardReference:
+        'Стандарт ФПО, спеціальність 122 «Комп’ютерні науки» — 180 кредитів ЄКТС',
     },
     {
       code: 'D3',
       name: 'Менеджмент',
       shortName: 'МН',
+      normativeEcts: 150,
+      standardReference:
+        'Стандарт ФПО, спеціальність 073 «Менеджмент» — 150 кредитів ЄКТС',
     },
   ]
 
@@ -97,8 +47,20 @@ async function seedCurriculumDomain() {
   for (const s of specialties) {
     const specialty = await prisma.specialty.upsert({
       where: { code: s.code },
-      update: { name: s.name, shortName: s.shortName },
-      create: { code: s.code, name: s.name, shortName: s.shortName, isActive: true },
+      update: {
+        name: s.name,
+        shortName: s.shortName,
+        normativeEcts: s.normativeEcts,
+        standardReference: s.standardReference,
+      },
+      create: {
+        code: s.code,
+        name: s.name,
+        shortName: s.shortName,
+        isActive: true,
+        normativeEcts: s.normativeEcts,
+        standardReference: s.standardReference,
+      },
     })
     createdSpecialties[s.code] = specialty.id
     console.log(`  ✔ Specialty: [${specialty.code}] ${specialty.name}`)

@@ -7,7 +7,8 @@ import {
 	HttpStatus,
 	Param,
 	Patch,
-	Post
+	Post,
+	Req
 } from '@nestjs/common'
 import {
 	ApiBearerAuth,
@@ -17,8 +18,10 @@ import {
 	ApiTags
 } from '@nestjs/swagger'
 import { UserRole } from '@prisma/client'
+import type { Request } from 'express'
 
 import { Authorization } from '@/auth/decorators/auth.decorator'
+import { Authorized } from '@/auth/decorators/authorized.decorator'
 
 import { CurriculumVersionsService } from './curriculum-versions.service'
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto'
@@ -29,6 +32,7 @@ import { CreateCurriculumVersionDto } from './dto/create-curriculum-version.dto'
 import { CreateElectiveBlockDto } from './dto/create-elective-block.dto'
 import { CreateSectionDto } from './dto/create-section.dto'
 import { CreateTimeBudgetEntryDto } from './dto/create-time-budget-entry.dto'
+import { PublishCurriculumVersionDto } from './dto/publish-curriculum-version.dto'
 import { UpdateComponentTermDto } from './dto/update-component-term.dto'
 import { UpdateComponentDto } from './dto/update-component.dto'
 import { UpdateSectionDto } from './dto/update-section.dto'
@@ -76,8 +80,31 @@ export class CurriculumVersionsController {
 		return this.versionsService.create(curriculumId, dto)
 	}
 
-	@ApiOperation({ summary: 'Опублікувати версію навчального плану' })
+	@ApiOperation({
+		summary:
+			'Нормативна перевірка версії плану без публікації (Наказ МОН № 510, розд. V і IX)'
+	})
 	@ApiParam({ name: 'id', description: 'UUID версії' })
+	@ApiResponse({
+		status: 200,
+		description: 'Перелік знахідок: severity BLOCK не дозволяє публікацію'
+	})
+	@Get('curriculum-versions/:id/norm-check')
+	@HttpCode(HttpStatus.OK)
+	public normCheck(@Param('id') id: string) {
+		return this.versionsService.validateNorms(id)
+	}
+
+	@ApiOperation({
+		summary:
+			'Опублікувати версію навчального плану (з реквізитами затвердження)'
+	})
+	@ApiParam({ name: 'id', description: 'UUID версії' })
+	@ApiResponse({
+		status: 400,
+		description:
+			'План не відповідає нормативним вимогам — у тілі перелік порушень'
+	})
 	@Post('curriculum-versions/:id/publish')
 	@HttpCode(HttpStatus.OK)
 	@Authorization(
@@ -85,8 +112,18 @@ export class CurriculumVersionsController {
 		UserRole.DEPUTY_DIRECTOR,
 		UserRole.ADMINISTRATOR
 	)
-	public publish(@Param('id') id: string) {
-		return this.versionsService.publish(id)
+	public publish(
+		@Param('id') id: string,
+		@Body() dto: PublishCurriculumVersionDto,
+		@Authorized('id') userId: string,
+		@Authorized('role') role: UserRole,
+		@Req() req: Request
+	) {
+		return this.versionsService.publish(id, dto, {
+			userId,
+			role,
+			ip: req.ip ?? null
+		})
 	}
 
 	@ApiOperation({ summary: 'Депрекувати версію навчального плану' })
@@ -98,8 +135,15 @@ export class CurriculumVersionsController {
 		UserRole.DEPUTY_DIRECTOR,
 		UserRole.ADMINISTRATOR
 	)
-	public deprecate(@Param('id') id: string) {
-		return this.versionsService.deprecate(id)
+	public deprecate(
+		@Param('id') id: string,
+		@Authorized('id') userId: string,
+		@Req() req: Request
+	) {
+		return this.versionsService.deprecate(id, {
+			userId,
+			ip: req.ip ?? null
+		})
 	}
 
 	@ApiOperation({ summary: 'Видалити чернеткову версію навчального плану' })

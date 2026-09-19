@@ -3,11 +3,11 @@ import { ConfigService } from '@nestjs/config'
 import { Cron, CronExpression, Interval } from '@nestjs/schedule'
 import { AdmissionCampaignStatus, type Prisma } from '@prisma/client'
 
+import { APP_ENV, APP_POLICY } from '@/config/environment'
 import { EdboService } from '@/edbo/core/edbo.service'
 import type { PersonRequestList2ResponseDto } from '@/edbo/entrance/dto/person-request-list2-response.dto'
 import type { SpecialitiesListResponseDto } from '@/edbo/entrance/dto/specialities-list-response.dto'
 import { EntranceService } from '@/edbo/entrance/entrance.service'
-import { isDev } from '@/libs/common/utils/is-dev.util'
 import { PrismaService } from '@/prisma/prisma.service'
 
 import {
@@ -74,7 +74,7 @@ export interface AutoRegisterResult {
 	registered: number
 	skipped: number
 	failed: number
-	/** У dev — реальних ЄДЕБО-запитів немає, лише розрахунок і лог. */
+	/** Поза production реальних ЄДЕБО-запитів немає — лише розрахунок і лог. */
 	dryRun: boolean
 }
 
@@ -196,14 +196,15 @@ export class AdmissionSyncService {
 	/**
 	 * Авто-реєстрація заяв статусу «Заява надійшла з сайту» (1) → «Зареєстровано» (5):
 	 * змінює статус у ЄДЕБО та присвоює номер справи «NN-суфікс» (суфікс — з налаштувань КП).
-	 * У dev — сухий прогон (лише лог розрахованого номера, без ЄДЕБО-запитів).
+	 * Поза production — сухий прогон (лише лог розрахованого номера, без
+	 * ЄДЕБО-запитів): записи в реєстр робить тільки бойовий тір.
 	 * Помилка однієї заяви не валить решту. `userId` (за наявності) → запис у AuditLog.
 	 */
 	public async autoRegisterPending(
 		admissionYear: number,
 		userId?: string
 	): Promise<AutoRegisterResult> {
-		const dryRun = !isDev(this.configService)
+		const dryRun = !APP_POLICY.allowEdboWrites
 		const campaign = await this.prisma.admissionCampaign.findUnique({
 			where: { admissionYear }
 		})
@@ -374,7 +375,8 @@ export class AdmissionSyncService {
 		}
 
 		this.logger.log(
-			`Авто-реєстрація ${admissionYear}: зареєстровано=${registered} пропущено=${skipped} помилок=${failed} dryRun=${dryRun}`
+			`Авто-реєстрація ${admissionYear}: зареєстровано=${registered} пропущено=${skipped} ` +
+				`помилок=${failed} dryRun=${dryRun} тір=${APP_ENV}`
 		)
 		return { admissionYear, registered, skipped, failed, dryRun }
 	}

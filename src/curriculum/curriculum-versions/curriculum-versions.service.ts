@@ -1,12 +1,21 @@
 import {
 	BadRequestException,
+	ForbiddenException,
 	Injectable,
 	Logger,
 	NotFoundException
 } from '@nestjs/common'
-import { CurriculumVersion } from '@prisma/client'
+import { CurriculumVersion, UserRole } from '@prisma/client'
 
 import { PrismaService } from '@/prisma/prisma.service'
+
+import {
+	formatFinding,
+	type NormComponentInput,
+	type NormElectiveBlockInput,
+	type NormFinding,
+	validateCurriculumNorms
+} from '../curriculum.norms'
 
 import { CreateCalendarEntryDto } from './dto/create-calendar-entry.dto'
 import { CreateComponentProjectionDto } from './dto/create-component-projection.dto'
@@ -16,6 +25,7 @@ import { CreateCurriculumVersionDto } from './dto/create-curriculum-version.dto'
 import { CreateElectiveBlockDto } from './dto/create-elective-block.dto'
 import { CreateSectionDto } from './dto/create-section.dto'
 import { CreateTimeBudgetEntryDto } from './dto/create-time-budget-entry.dto'
+import { PublishCurriculumVersionDto } from './dto/publish-curriculum-version.dto'
 import { UpdateComponentTermDto } from './dto/update-component-term.dto'
 import { UpdateComponentDto } from './dto/update-component.dto'
 import { UpdateSectionDto } from './dto/update-section.dto'
@@ -32,6 +42,28 @@ function assertDraft(
 	if (version.isPublished) {
 		throw new BadRequestException(
 			`Версія ${version.versionNumber} вже опублікована і не може бути змінена. Створіть нову версію для внесення змін.`
+		)
+	}
+}
+
+/**
+ * Розподіл кредитів по семестрах не може перевищувати обсяг компонента.
+ * Компоненти інтегрованої програми профільної середньої освіти ведуться в годинах
+ * (totalEcts = 0) — для них перевірка пропускається.
+ *
+ * Допуск 0.01 — `ects` зберігається як Decimal(6,2).
+ */
+function assertTermEctsWithinComponent(
+	otherTermsEcts: number,
+	incomingEcts: number,
+	componentTotalEcts: number
+): void {
+	if (componentTotalEcts <= 0) return
+	const total = otherTermsEcts + incomingEcts
+	if (total > componentTotalEcts + 0.01) {
+		throw new BadRequestException(
+			`Сума кредитів ЄКТС по семестрах (${Math.round(total * 100) / 100}) перевищує ` +
+				`загальний обсяг компонента (${componentTotalEcts} ЄКТС).`
 		)
 	}
 }
@@ -197,7 +229,11 @@ export class CurriculumVersionsService {
 	 * Публікує версію навчального плану.
 	 * Після публікації структура стає незмінною.
 	 */
-	public async publish(id: string) {
+	public async publish(
+		id: string,
+		dto: PublishCurriculumVersionDto,
+		actor: { userId: string; role: UserRole; ip: string | null }
+	) {
 		const version = await this.prisma.curriculumVersion.findUnique({
 			where: { id }
 		})
@@ -216,42 +252,191 @@ export class CurriculumVersionsService {
 			)
 		}
 
-		const warnings: string[] = []
+		const findings = await this.validateNorms(id)
+		const blocking = findings.filter(f => f.severity === 'BLOCK')
+		const warnings = findings
+			.filter(f => f.severity === 'WARN')
+			.map(formatFinding)
 
-		// [SOFT WARN] Вибіркові компоненти < 25% загального обсягу (ст. 49 ч. 2 Закону №2745-VIII)
-		const components = await this.prisma.curriculumComponent.findMany({
-			where: { section: { versionId: id } },
-			select: { totalHours: true, isMandatory: true }
-		})
-		if (components.length > 0) {
-			const totalHours = components.reduce((s, c) => s + c.totalHours, 0)
-			const electiveHours = components
-				.filter(c => !c.isMandatory)
-				.reduce((s, c) => s + c.totalHours, 0)
-			const electiveRatio =
-				totalHours > 0 ? electiveHours / totalHours : 0
-			if (electiveRatio < 0.25) {
-				warnings.push(
-					`Вибіркові компоненти складають ${Math.round(electiveRatio * 100)}% загального обсягу (${electiveHours} з ${totalHours} год.). ` +
-						'Ст. 49 ч. 2 Закону №2745-VIII вимагає не менше 25%. ' +
-						'Перевірте наявність ВК або позначте відповідні ОК як вибіркові (isMandatory = false).'
+		// Блокуючі порушення обходить лише директор і лише з письмовим обґрунтуванням,
+		// яке разом з переліком порушень лягає в журнал аудиту.
+		if (blocking.length > 0) {
+			const reason = dto.overrideReason?.trim()
+			if (reason === undefined || reason.length === 0) {
+				throw new BadRequestException({
+					message:
+						'Навчальний план не відповідає нормативним вимогам і не може бути опублікований.',
+					findings: blocking.map(f => ({
+						code: f.code,
+						source: f.source,
+						message: f.message
+					}))
+				})
+			}
+			if (actor.role !== UserRole.DIRECTOR) {
+				throw new ForbiddenException(
+					'Опублікувати план попри нормативні порушення може лише директор.'
 				)
 			}
 		}
 
-		const published = await this.prisma.curriculumVersion.update({
-			where: { id },
-			data: { isPublished: true, publishedAt: new Date() }
+		const published = await this.prisma.$transaction(async tx => {
+			const row = await tx.curriculumVersion.update({
+				where: { id },
+				data: {
+					isPublished: true,
+					publishedAt: new Date(),
+					approvalOrderNumber: dto.approvalOrderNumber.trim(),
+					approvalDate: new Date(dto.approvalDate),
+					approvedBy: dto.approvedBy.trim()
+				}
+			})
+
+			await tx.auditLog.create({
+				data: {
+					userId: actor.userId,
+					action: 'PUBLISH_CURRICULUM_VERSION',
+					targetType: 'CurriculumVersion',
+					targetId: id,
+					ipAddress: actor.ip,
+					metadata: {
+						curriculumId: version.curriculumId,
+						versionNumber: version.versionNumber,
+						approvalOrderNumber: dto.approvalOrderNumber.trim(),
+						approvalDate: dto.approvalDate,
+						approvedBy: dto.approvedBy.trim(),
+						warnings,
+						blockingOverridden: blocking.map(f => f.code),
+						overrideReason: dto.overrideReason?.trim() ?? null
+					}
+				}
+			})
+
+			return row
 		})
 
-		return { version: published, warnings }
+		if (blocking.length > 0) {
+			this.logger.warn(
+				`Версію ${id} опубліковано з обходом ${blocking.length} нормативних порушень ` +
+					`(userId=${actor.userId}): ${blocking.map(f => f.code).join(', ')}`
+			)
+		}
+
+		return { version: published, warnings, overridden: blocking }
+	}
+
+	/**
+	 * Проганяє нормативні перевірки версії плану без публікації.
+	 * Дозволяє показати порушення в інтерфейсі до того, як план вводиться в дію.
+	 */
+	public async validateNorms(versionId: string): Promise<NormFinding[]> {
+		const version = await this.prisma.curriculumVersion.findUnique({
+			where: { id: versionId },
+			include: {
+				curriculum: {
+					include: {
+						program: {
+							include: {
+								specialty: {
+									select: { normativeEcts: true }
+								}
+							}
+						}
+					}
+				},
+				sections: {
+					include: {
+						electiveBlocks: {
+							include: {
+								options: {
+									select: { id: true, totalEcts: true }
+								}
+							}
+						},
+						components: {
+							include: {
+								terms: {
+									orderBy: { semesterNumber: 'asc' }
+								}
+							}
+						}
+					}
+				},
+				calendarEntries: {
+					select: { courseNumber: true, weekType: true }
+				},
+				_count: { select: { timeBudgetEntries: true } }
+			}
+		})
+		if (!version)
+			throw new NotFoundException('Версію навчального плану не знайдено.')
+
+		const { curriculum } = version
+		const normativeEcts =
+			curriculum.program.specialty.normativeEcts === null
+				? null
+				: Number(curriculum.program.specialty.normativeEcts)
+
+		const components: NormComponentInput[] = version.sections.flatMap(
+			section =>
+				section.components.map(component => ({
+					name: component.name,
+					code: component.code,
+					sectionType: section.sectionType,
+					isMandatory: component.isMandatory,
+					componentType: component.componentType,
+					totalEcts: Number(component.totalEcts),
+					totalHours: component.totalHours,
+					auditoryHours: component.auditoryHours,
+					lectureHours: component.lectureHours,
+					practicalHours: component.practicalHours,
+					seminarHours: component.seminarHours,
+					labHours: component.labHours,
+					selfStudyHours: component.selfStudyHours,
+					otherHours: component.otherHours,
+					electiveBlockId: component.electiveBlockId,
+					terms: component.terms.map(term => ({
+						semesterNumber: term.semesterNumber,
+						ects: Number(term.ects),
+						hours: term.hours,
+						controlForm: term.controlForm,
+						hasCourseWork: term.hasCourseWork,
+						hasCourseProject: term.hasCourseProject
+					}))
+				}))
+		)
+
+		const electiveBlocks: NormElectiveBlockInput[] =
+			version.sections.flatMap(section =>
+				section.electiveBlocks.map(block => ({
+					id: block.id,
+					name: block.name,
+					maxSelections: block.maxSelections,
+					optionEcts: block.options.map(o => Number(o.totalEcts))
+				}))
+			)
+
+		return validateCurriculumNorms({
+			declaredTotalEcts: Number(curriculum.totalEcts),
+			normativeEcts,
+			educationForm: curriculum.educationForm,
+			admissionBasis: curriculum.admissionBasis,
+			studyDurationMonths: curriculum.studyDurationMonths,
+			components,
+			electiveBlocks,
+			calendar: version.calendarEntries,
+			timeBudgetEntryCount: version._count.timeBudgetEntries
+		})
 	}
 
 	/**
 	 * Депрекує версію (позначає як застарілу).
 	 * Версія залишається в БД для историчних запитів.
 	 */
-	public async deprecate(id: string) {
+	public async deprecate(
+		id: string,
+		actor: { userId: string; ip: string | null }
+	) {
 		const version = await this.prisma.curriculumVersion.findUnique({
 			where: { id }
 		})
@@ -259,9 +444,25 @@ export class CurriculumVersionsService {
 		if (version.deprecatedAt) {
 			throw new BadRequestException('Версія вже депрекована.')
 		}
-		return this.prisma.curriculumVersion.update({
-			where: { id },
-			data: { deprecatedAt: new Date() }
+		return this.prisma.$transaction(async tx => {
+			const row = await tx.curriculumVersion.update({
+				where: { id },
+				data: { deprecatedAt: new Date() }
+			})
+			await tx.auditLog.create({
+				data: {
+					userId: actor.userId,
+					action: 'DEPRECATE_CURRICULUM_VERSION',
+					targetType: 'CurriculumVersion',
+					targetId: id,
+					ipAddress: actor.ip,
+					metadata: {
+						curriculumId: version.curriculumId,
+						versionNumber: version.versionNumber
+					}
+				}
+			})
+			return row
 		})
 	}
 
@@ -1018,7 +1219,7 @@ export class CurriculumVersionsService {
 		// Guard: sum of all term hours must not exceed component.totalHours
 		const siblings = await this.prisma.curriculumComponentTerm.findMany({
 			where: { componentId },
-			select: { hours: true }
+			select: { hours: true, ects: true }
 		})
 		const allocatedHours = siblings.reduce((sum, t) => sum + t.hours, 0)
 		if (allocatedHours + dto.hours > component.totalHours) {
@@ -1026,6 +1227,15 @@ export class CurriculumVersionsService {
 				`Сума годин по семестрах (${allocatedHours + dto.hours}) перевищує загальний обсяг компонента (${component.totalHours} год.).`
 			)
 		}
+
+		// Guard: те саме для кредитів. ЄКТС — нормативна одиниця обсягу освітнього
+		// компонента (ст. 49 ч. 3 Закону № 2745-VIII, Наказ МОН № 510 п. 5.11),
+		// тож розподіл по семестрах не може перевищувати обсяг компонента.
+		assertTermEctsWithinComponent(
+			siblings.reduce((sum, t) => sum + Number(t.ects), 0),
+			dto.ects ?? 0,
+			Number(component.totalEcts)
+		)
 
 		// [SOFT WARN] subgroupCount = 2 без підстави — фіксуємо в логах, не блокуємо
 		if ((dto.subgroupCount ?? 1) >= 2 && !dto.subgroupJustification) {
@@ -1077,21 +1287,30 @@ export class CurriculumVersionsService {
 		if (!term) throw new NotFoundException('Розподіл не знайдено.')
 		assertDraft(term.component.section.version)
 
-		// Guard: only when hours are being updated
-		if (dto.hours !== undefined) {
+		// Guard: only when hours or ECTS are being updated
+		if (dto.hours !== undefined || dto.ects !== undefined) {
 			const siblings = await this.prisma.curriculumComponentTerm.findMany(
 				{
 					where: {
 						componentId: term.componentId,
 						NOT: { id: termId }
 					},
-					select: { hours: true }
+					select: { hours: true, ects: true }
 				}
 			)
-			const otherHours = siblings.reduce((sum, t) => sum + t.hours, 0)
-			if (otherHours + dto.hours > term.component.totalHours) {
-				throw new BadRequestException(
-					`Сума годин по семестрах (${otherHours + dto.hours}) перевищує загальний обсяг компонента (${term.component.totalHours} год.).`
+			if (dto.hours !== undefined) {
+				const otherHours = siblings.reduce((sum, t) => sum + t.hours, 0)
+				if (otherHours + dto.hours > term.component.totalHours) {
+					throw new BadRequestException(
+						`Сума годин по семестрах (${otherHours + dto.hours}) перевищує загальний обсяг компонента (${term.component.totalHours} год.).`
+					)
+				}
+			}
+			if (dto.ects !== undefined) {
+				assertTermEctsWithinComponent(
+					siblings.reduce((sum, t) => sum + Number(t.ects), 0),
+					dto.ects,
+					Number(term.component.totalEcts)
 				)
 			}
 		}

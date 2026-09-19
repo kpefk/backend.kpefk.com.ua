@@ -1,7 +1,7 @@
 import { MailerOptions } from '@nestjs-modules/mailer'
 import { ConfigService } from '@nestjs/config'
 
-import { isDev } from '@/libs/common/utils/is-dev.util'
+import { environmentPolicy } from './environment'
 
 /**
  * Конфігурація для поштового сервера.
@@ -18,7 +18,7 @@ export const getMailerConfig = (
 	transport: {
 		host: configService.getOrThrow<string>('MAIL_HOST'),
 		port: configService.getOrThrow<number>('MAIL_PORT'),
-		secure: !isDev(configService),
+		secure: environmentPolicy(configService).secureMailTransport,
 		auth: {
 			user: configService.getOrThrow<string>('MAIL_LOGIN'),
 			pass: configService.getOrThrow<string>('MAIL_PASSWORD')

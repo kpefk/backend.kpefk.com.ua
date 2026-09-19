@@ -35,11 +35,17 @@ lerna-debug.log*
 !.vscode/extensions.json
 
 # dotenv environment variable files
+# Комітимо лише *.example — решта містить справжні секрети тірів.
 .env
+.env.development
+.env.test
+.env.production
 .env.development.local
 .env.test.local
 .env.production.local
 .env.local
+!.env.example
+!.env.test.example
 
 # Secrets: ключі, сертифікати, service-account файли Google.
 # Тримаємо окремим блоком — випадково закомічений .pem або

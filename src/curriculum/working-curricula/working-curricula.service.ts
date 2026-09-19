@@ -4,12 +4,14 @@ import {
 	Logger,
 	NotFoundException
 } from '@nestjs/common'
+import { type ComponentType } from '@prisma/client'
 
 import { PrismaService } from '@/prisma/prisma.service'
 
 import {
-	NORM_CONSULTATION_RATIO_DISTANCE,
-	NORM_CONSULTATION_RATIO_FULL_TIME
+	consultationRatio,
+	NORM_QUALIFICATION_EXAM_MAX_COMMITTEE_SIZE,
+	NORM_STATE_EXAM_MAX_COMMITTEE_SIZE
 } from '../teacher-load/teacher-load.constants'
 
 import { CreateWorkingAssignmentDto } from './dto/create-working-assignment.dto'
@@ -17,6 +19,43 @@ import { CreateWorkingCurriculumDto } from './dto/create-working-curriculum.dto'
 import { UpdateWorkingComponentTermDto } from './dto/update-working-component-term.dto'
 import { UpdateWorkingCurriculumDto } from './dto/update-working-curriculum.dto'
 import { UpsertWorkingComponentTermDto } from './dto/upsert-working-component-term.dto'
+
+/**
+ * Межа чисельності комісії з атестації залежить від форми атестації:
+ *  • кваліфікаційний іспит — Наказ МОН №686 п.22: «не більше трьох осіб,
+ *    включаючи голову комісії» (тверда межа, винятків норма не передбачає);
+ *  • ДПА за курс профільної середньої школи — п.19: до трьох осіб, «в окремих
+ *    випадках кількість членів комісії може бути збільшена до чотирьох осіб за
+ *    вмотивованим рішенням закладу фахової передвищої освіти».
+ */
+function assertAttestationCommitteeSize(
+	componentType: ComponentType,
+	size: number
+): void {
+	if (componentType === 'QUALIFICATION_EXAM') {
+		if (size > NORM_QUALIFICATION_EXAM_MAX_COMMITTEE_SIZE) {
+			throw new BadRequestException(
+				`Комісія з атестації у формі кваліфікаційного іспиту — не більше ` +
+					`${NORM_QUALIFICATION_EXAM_MAX_COMMITTEE_SIZE} осіб, включаючи голову ` +
+					'(Наказ МОН №686, п.22).'
+			)
+		}
+		return
+	}
+	if (componentType === 'STATE_EXAM') {
+		if (size > NORM_STATE_EXAM_MAX_COMMITTEE_SIZE) {
+			throw new BadRequestException(
+				`Комісія з державної підсумкової атестації — не більше ` +
+					`${NORM_STATE_EXAM_MAX_COMMITTEE_SIZE} осіб (Наказ МОН №686, п.19).`
+			)
+		}
+		return
+	}
+	throw new BadRequestException(
+		'Розмір комісії з атестації застосовується лише до компонентів ' +
+			'QUALIFICATION_EXAM і STATE_EXAM.'
+	)
+}
 
 const WORKING_CURRICULUM_INCLUDE = {
 	version: {
@@ -437,7 +476,12 @@ export class WorkingCurriculaService {
 							}
 						}
 					},
-					componentTerm: { select: { hours: true } }
+					componentTerm: {
+						select: {
+							hours: true,
+							component: { select: { componentType: true } }
+						}
+					}
 				}
 			})
 		if (!term)
@@ -445,6 +489,13 @@ export class WorkingCurriculaService {
 		if (term.workingCurriculum.isApproved) {
 			throw new BadRequestException(
 				'Затверджений план не можна змінювати.'
+			)
+		}
+
+		if (dto.attestationCommitteeSize !== undefined) {
+			assertAttestationCommitteeSize(
+				term.componentTerm.component.componentType,
+				dto.attestationCommitteeSize
 			)
 		}
 
@@ -461,17 +512,15 @@ export class WorkingCurriculaService {
 				dto.controlWorksIndependentCount ??
 				term.controlWorksIndependentCount,
 			diplomaCommitteeSize:
-				dto.diplomaCommitteeSize ?? term.diplomaCommitteeSize
+				dto.diplomaCommitteeSize ?? term.diplomaCommitteeSize,
+			attestationCommitteeSize:
+				dto.attestationCommitteeSize ?? term.attestationCommitteeSize
 		}
 
 		// SOFT WARN: Наказ МОН №686 п.9 — ліміт консультацій відносно загального обсягу
-		const educationForm =
+		const consultRatio = consultationRatio(
 			term.workingCurriculum.version.curriculum.educationForm
-		const isDistance =
-			educationForm === 'PART_TIME' || educationForm === 'DUAL'
-		const consultRatio = isDistance
-			? NORM_CONSULTATION_RATIO_DISTANCE
-			: NORM_CONSULTATION_RATIO_FULL_TIME
+		)
 		const componentHours = term.componentTerm.hours
 		if (
 			componentHours > 0 &&
@@ -582,12 +631,9 @@ export class WorkingCurriculaService {
 		// SOFT WARN: Наказ МОН №686 п.9 — ліміт консультацій відносно загального обсягу
 		const consultationHours = dto.consultationHours ?? 0
 		if (consultationHours > 0 && componentTerm.hours > 0) {
-			const educationForm = wc.version.curriculum.educationForm
-			const isDistance =
-				educationForm === 'PART_TIME' || educationForm === 'DUAL'
-			const consultRatio = isDistance
-				? NORM_CONSULTATION_RATIO_DISTANCE
-				: NORM_CONSULTATION_RATIO_FULL_TIME
+			const consultRatio = consultationRatio(
+				wc.version.curriculum.educationForm
+			)
 			if (consultationHours > componentTerm.hours * consultRatio) {
 				this.logger.warn(
 					`[SOFT WARN] Консультації (${consultationHours} год) перевищують ${consultRatio * 100}% ` +

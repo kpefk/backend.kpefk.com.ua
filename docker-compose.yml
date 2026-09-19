@@ -1,4 +1,13 @@
-version: '3.8' # Version of Docker Compose
+# Інфраструктура тірів.
+#
+#   docker compose up -d                      → dev  (postgres:5433, redis:6379)
+#   docker compose --profile test up -d       → test (postgres:5434, redis:6380)
+#   docker compose --profile test down        → зупинити лише тестовий тір
+#
+# Тіри навмисно розділені на рівні контейнерів, портів і томів: спільна БД
+# означала б, що прогін на staging псує дані, з якими працює розробник.
+# Сервіси dev лишаються без профілю, щоб звична команда `docker compose up`
+# працювала як раніше.
 
 services:
     db:
@@ -28,9 +37,56 @@ services:
         networks:
             - backend
 
+    # ── Тестовий тір (staging) ────────────────────────────────────────────────
+    # Піднімається лише з `--profile test`. Змінні беруться з .env.test —
+    # передай його явно: `docker compose --env-file .env.test --profile test up -d`.
+
+    db-test:
+        profiles: ['test']
+        container_name: kpefk-postgres-test
+        image: postgres:17-alpine
+        restart: always
+        environment:
+            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            - POSTGRES_DB=${POSTGRES_DB}
+        ports:
+            - 5434:5432
+        volumes:
+            - postgres_data_test:/var/lib/postgresql/data
+        healthcheck:
+            test:
+                ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+            interval: 5s
+            timeout: 5s
+            retries: 10
+        networks:
+            - backend-test
+
+    redis-test:
+        profiles: ['test']
+        container_name: kpefk-redis-test
+        image: redis:7-alpine
+        restart: always
+        ports:
+            - 6380:6379
+        command: redis-server --requirepass ${REDIS_PASSWORD}
+        volumes:
+            - redis_data_test:/data
+        healthcheck:
+            test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+            interval: 5s
+            timeout: 5s
+            retries: 10
+        networks:
+            - backend-test
+
 volumes:
     postgres_data:
     redis_data:
+    postgres_data_test:
+    redis_data_test:
 
 networks:
     backend:
+    backend-test:

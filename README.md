@@ -373,6 +373,127 @@ the EDBO side.
 
 ---
 
+## First run: initial setup
+
+A freshly migrated database has **no users at all**. The first administrator is
+created by whoever opens the app — credentials are entered on the client, not
+baked into the repository.
+
+```bash
+# is setup still needed?
+curl -s http://localhost:4000/setup/status
+# → {"needsSetup":true}
+
+curl -X POST http://localhost:4000/setup/administrator \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@kpefk.com.ua","password":"Admin2026pass"}'
+# → 201 {"id":"…","email":"admin@kpefk.com.ua","role":"ADMINISTRATOR"}
+```
+
+Both routes are `@Public()` — on an empty database there is nobody who could
+authenticate. They are closed by the **state of the system** instead: as soon as
+one user exists, `status` returns `needsSetup: false` and `POST` returns **409**.
+
+The check is "no users at all", not "no administrator". Otherwise deleting the
+last admin would reopen the route on a database already full of student
+records, letting anyone grant themselves full access.
+
+Other guarantees:
+
+- creation runs in a `Serializable` transaction — two concurrent requests on an
+  empty database cannot both succeed;
+- the password must pass the same strength rules as student registration
+  (≥ 8 chars, upper + lower + digit) and is stored argon2-hashed;
+- email is normalised to lower case;
+- the event is written to `audit_logs` as `CREATE_FIRST_ADMINISTRATOR`;
+- `POST` is throttled to 5 requests/min, `status` to 20/min.
+
+`prisma db seed` only loads reference data (specialties and their standard ECTS
+volumes, educational programmes). It deliberately creates **no** users, so the
+setup route stays open after seeding.
+
+---
+
+## Deployment tiers
+
+Three tiers: **development**, **test** (staging) and **production**. The tier is
+selected by `NODE_ENV` and drives an explicit policy matrix in
+[`src/config/environment.ts`](src/config/environment.ts).
+
+| Capability | development | test (staging) | production |
+|---|---|---|---|
+| EDBO **write** operations | blocked | **blocked** | allowed |
+| Swagger at `/docs` | on | on | off |
+| reCAPTCHA enforced | no | no | yes |
+| SMTP over TLS | no | yes | yes |
+| Short secrets are fatal | no (warning) | yes | yes |
+| Relaxed CSP | yes | yes | no |
+
+**EDBO writes are blocked outside production and there is no switch to turn them
+back on.** EDBO has no sandbox: every tier authenticates against the live
+national registry with the same credentials, so the only reliable safeguard is
+to never let the request leave the process. The block lives in
+`EdboService.post()` — the single funnel all 68 registry calls pass through —
+and any write endpoint returns HTTP 403 instead. Reads work normally.
+
+The tier and its safeguards are logged on startup:
+
+```
+[Bootstrap] Тір: test · ЄДЕБО-записи: заблоковані · Swagger: увімкнено · reCAPTCHA: вимкнено
+```
+
+### Env files per tier
+
+`src/config/environment.ts` loads `.env.<tier>` first, then `.env` as a
+fallback — tier values win. This runs before `ConfigModule` reads anything, so
+`ignoreEnvFile: true` is used uniformly. Only `*.example` files are committed;
+`.env`, `.env.development`, `.env.test` and `.env.production` are gitignored.
+
+`prisma.config.ts` imports the same module, so Prisma CLI commands respect the
+tier too — `NODE_ENV=test bunx prisma migrate deploy` targets the **test**
+database, not dev.
+
+### Running the test tier
+
+```bash
+cp .env.test.example .env.test     # fill in secrets, DB and SMTP of the tier
+bun run tier:test:up               # postgres:5434 + redis:6380 (compose profile)
+bun run migrate:test               # apply migrations to the test database
+```
+
+Then either watch mode, or the compiled artifact:
+
+```bash
+bun run start:test                 # watch mode, NODE_ENV=test
+```
+
+```bash
+bun run build                      # tier-agnostic: one artifact serves all tiers
+bun run start:test:dist            # runs dist/main under NODE_ENV=test
+```
+
+`bun run tier:test:down` stops the tier's containers. Dev containers
+(`postgres:5433`, `redis:6379`) are never touched: the tiers use separate
+containers, ports, volumes and Docker networks, and the scripts name the test
+services explicitly, so a staging run cannot corrupt local dev data.
+
+On startup the tier and its safeguards are logged — check this line first
+whenever a tier behaves unexpectedly:
+
+```
+[Bootstrap] Тір: test · ЄДЕБО-записи: заблоковані · Swagger: увімкнено · reCAPTCHA: вимкнено
+```
+
+Two things that bite in practice:
+
+> Use a **different** `SESSION_FOLDER` prefix per tier. Redis is keyed by that
+> prefix, and two tiers sharing it would mix each other's sessions.
+
+> Generate secrets **without `$`** (`openssl rand -hex 32`). `.env.test` is also
+> read by `docker compose --env-file`, which interpolates `$` inside values.
+
+---
+
 ## Environment setup
 
 Copy `.env.example` to `.env` and fill in all variables:

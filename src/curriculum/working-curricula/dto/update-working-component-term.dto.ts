@@ -130,4 +130,18 @@ export class UpdateWorkingComponentTermDto {
 	@Min(1)
 	@Max(4)
 	diplomaCommitteeSize?: number
+
+	@ApiPropertyOptional({
+		description:
+			'Кількість членів комісії з атестації у формі кваліфікаційного іспиту ' +
+			'(Наказ МОН №686, п.22 — не більше трьох осіб, включаючи голову) або ДПА за курс ' +
+			'профільної середньої школи (п.19 — до трьох, в окремих випадках до чотирьох). ' +
+			'Лише для componentType IN (QUALIFICATION_EXAM, STATE_EXAM).',
+		default: 3
+	})
+	@IsOptional()
+	@IsInt()
+	@Min(1)
+	@Max(4)
+	attestationCommitteeSize?: number
 }

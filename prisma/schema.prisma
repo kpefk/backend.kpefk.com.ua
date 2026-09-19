@@ -635,6 +635,18 @@ model Specialty {
   /// Заповнюється під час синхронізації освітніх програм.
   edeboSpecialityId Int? @unique @map("edebo_speciality_id")
 
+  /// Нормативний обсяг ОПП у кредитах ЄКТС на основі профільної середньої освіти —
+  /// зі стандарту фахової передвищої освіти за спеціальністю (розд. 3 стандарту).
+  /// Напр.: 071 — 120, 073 — 150, 122/133/274/275 — 180.
+  /// null = стандарт відсутній або ще не внесено; тоді обсяг плану зі стандартом
+  /// не звіряється (Наказ МОН № 510, п. 5.2 — за відсутності стандарту обсяг
+  /// визначає заклад з урахуванням Національної рамки кваліфікацій).
+  normativeEcts Decimal? @map("normative_ects") @db.Decimal(6, 2)
+
+  /// Реквізити наказу МОН, яким затверджено стандарт ФПО за цією спеціальністю.
+  /// Довідкове поле для друкованих витягів і звірки при перегляді ОПП.
+  standardReference String? @map("standard_reference")
+
   programs EducationalProgram[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -1085,6 +1097,12 @@ model WorkingCurriculumComponentTerm {
   /// QUALIFICATION_WORK_DEFENSE). За замовчуванням 3.
   diplomaCommitteeSize Int @default(3) @map("diploma_committee_size")
 
+  /// Кількість членів комісії з атестації у формі кваліфікаційного іспиту
+  /// (Наказ МОН №686, п.22: «не більше трьох осіб, включаючи голову комісії») або
+  /// державної підсумкової атестації за курс профільної середньої школи (п.19).
+  /// Лише для componentType IN (QUALIFICATION_EXAM, STATE_EXAM). За замовчуванням 3.
+  attestationCommitteeSize Int @default(3) @map("attestation_committee_size")
+
   @@unique([workingCurriculumId, componentTermId])
   @@index([workingCurriculumId])
   @@index([teacherId])
@@ -1447,6 +1465,14 @@ enum LessonType {
   /// Консультації перед семестровим контролем — заліком/диф.заліком/екзаменом (п.10).
   /// Per-group, 2 год незалежно від формату контролю.
   PRE_CONTROL_CONSULTATION
+
+  /// Член комісії з атестації у формі кваліфікаційного іспиту (п.22) або державної
+  /// підсумкової атестації за курс профільної середньої школи (п.19).
+  /// Per-group, seat-based — як DIPLOMA_COMMITTEE, 0.5 год на здобувача на члена комісії.
+  ATTESTATION_COMMITTEE
+  /// Консультації перед атестацією у формі кваліфікаційного іспиту (п.21).
+  /// Per-group, 2 год на академічну групу.
+  ATTESTATION_CONSULTATION
 }
 
 /// Формат проведення семестрового екзамену (Наказ МОН №686 п.16).

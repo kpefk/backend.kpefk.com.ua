@@ -24,10 +24,16 @@
     "start": "nest start",
     "start:dev": "NODE_OPTIONS=--max-old-space-size=4096 nest start --watch",
     "start:debug": "NODE_OPTIONS=--max-old-space-size=4096 nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:test": "cross-env NODE_ENV=test NODE_OPTIONS=--max-old-space-size=4096 nest start --watch",
+    "start:test:dist": "cross-env NODE_ENV=test node dist/main",
+    "start:prod": "cross-env NODE_ENV=production node dist/main",
     "lint": "cross-env NODE_OPTIONS=--max-old-space-size=4096 eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "lint:ci": "cross-env NODE_OPTIONS=--max-old-space-size=4096 eslint \"{src,apps,libs,test}/**/*.ts\" --max-warnings 0",
     "migrate:deploy": "prisma migrate deploy",
+    "migrate:test": "cross-env NODE_ENV=test prisma migrate deploy",
+    "seed:test": "cross-env NODE_ENV=test prisma db seed",
+    "tier:test:up": "docker compose --env-file .env.test --profile test up -d db-test redis-test",
+    "tier:test:down": "docker compose --env-file .env.test --profile test stop db-test redis-test",
     "test": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js",
     "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --watch",
     "test:cov": "cross-env NODE_OPTIONS=--experimental-vm-modules node node_modules/jest/bin/jest.js --coverage",
@@ -62,6 +68,7 @@
     "cookie-parser": "^1.4.7",
     "docx": "^9.7.1",
     "docxtemplater": "^3.69.0",
+    "dotenv": "^18.0.0",
     "express-session": "^1.19.0",
     "fast-xml-parser": "^5.9.2",
     "googleapis": "^171.4.0",
@@ -156,8 +163,5 @@
       "^@prisma/__generated__$": "<rootDir>/../prisma/__generated__/index",
       "^@prisma/__generated__/(.*)$": "<rootDir>/../prisma/__generated__/$1"
     }
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
   }
 }

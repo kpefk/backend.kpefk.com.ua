@@ -1,5 +1,7 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common'
 
+import { APP_ENV, APP_POLICY } from '@/config/environment'
+
 // ── Типи відповідей ЄДЕБО ──────────────────────────────────────────
 
 interface EdboTokenResponse {
@@ -256,7 +258,58 @@ export class EdboService {
 	private static readonly DENIED_MESSAGE =
 		'Authorization has been denied for this request.'
 
+	/**
+	 * Останні сегменти шляхів ЄДЕБО, що змінюють дані в реєстрі.
+	 *
+	 * Перелік закритий і звірений із повним набором ендпоінтів, які викликає
+	 * застосунок: читання (`list`, `get`, `info`, `check`, `statusesHistory`,
+	 * `out`, `documents`) сюди не потрапляє.
+	 */
+	private static readonly WRITE_SEGMENTS: ReadonlySet<string> = new Set([
+		'add',
+		'update',
+		'del',
+		'delete',
+		'edit',
+		'changestatus',
+		'changeenrollpriority',
+		'complexupdate',
+		'motivationletterset',
+		'editstatus'
+	])
+
+	/** Чи змінює цей виклик дані в ЄДЕБО. */
+	public static isWriteOperation(path: string): boolean {
+		const [withoutQuery] = path.split('?')
+		const segments = (withoutQuery ?? '').split('/').filter(Boolean)
+		const last = segments.at(-1)
+		return (
+			last !== undefined &&
+			EdboService.WRITE_SEGMENTS.has(last.toLowerCase())
+		)
+	}
+
+	/**
+	 * Виконує запит до ЄДЕБО.
+	 *
+	 * Поза production write-операції блокуються тут — у єдиній точці, через яку
+	 * проходять усі виклики реєстру. ЄДЕБО не має пісочниці: dev і staging
+	 * ходять у ту саму бойову базу тими самими обліковими даними, тож єдиний
+	 * надійний запобіжник — не випускати запит із процесу. Перемикача немає
+	 * свідомо (див. `EnvironmentPolicy.allowEdboWrites`).
+	 */
 	async post<T>(path: string, body: unknown): Promise<T> {
+		if (!APP_POLICY.allowEdboWrites && EdboService.isWriteOperation(path)) {
+			this.logger.warn(
+				`Заблоковано write-операцію ЄДЕБО ${path}: тір «${APP_ENV}» не має права ` +
+					'змінювати дані державного реєстру.'
+			)
+			throw new HttpException(
+				`Операція «${path}» змінює дані в ЄДЕБО і заборонена в тірі «${APP_ENV}». ` +
+					'Записи в реєстр виконуються лише з production.',
+				HttpStatus.FORBIDDEN
+			)
+		}
 		return this.doPost<T>(path, body, false)
 	}
 

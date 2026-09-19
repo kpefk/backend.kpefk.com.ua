@@ -180,7 +180,16 @@ export class AdminService {
 			teachersWithAccount,
 			groupsTotal,
 			groupsArchived,
-			groupsWithoutCurator
+			groupsWithoutCurator,
+			universityCount,
+			classroomsCount,
+			specialtiesCount,
+			programsCount,
+			publishedVersionsCount,
+			groupAssignmentsCount,
+			workingCurriculaCount,
+			confirmedLoadCount,
+			publishedSchedulesCount
 		] = await Promise.all([
 			this.prisma.user.count(),
 			this.prisma.user.count({ where: { isActive: true } }),
@@ -196,7 +205,23 @@ export class AdminService {
 			this.prisma.group.count({ where: { archivedAt: { not: null } } }),
 			this.prisma.group.count({
 				where: { curatorId: null, archivedAt: null }
-			})
+			}),
+			// ── Лічильники чек-листа первинного налаштування ──────────────
+			this.prisma.university.count(),
+			this.prisma.classroom.count(),
+			this.prisma.specialty.count({ where: { isActive: true } }),
+			this.prisma.educationalProgram.count({ where: { isActive: true } }),
+			this.prisma.curriculumVersion.count({
+				where: { isPublished: true, deprecatedAt: null }
+			}),
+			this.prisma.groupCurriculumAssignment.count({
+				where: { isActive: true }
+			}),
+			this.prisma.workingCurriculum.count(),
+			this.prisma.teacherLoadSubjectAssignment.count({
+				where: { status: 'CONFIRMED' }
+			}),
+			this.prisma.schedule.count({ where: { status: 'PUBLISHED' } })
 		])
 
 		const byRole = Object.fromEntries(
@@ -229,6 +254,17 @@ export class AdminService {
 				active: groupsTotal - groupsArchived,
 				archived: groupsArchived,
 				withoutCurator: groupsWithoutCurator
+			},
+			setup: {
+				university: universityCount,
+				classrooms: classroomsCount,
+				specialties: specialtiesCount,
+				educationalPrograms: programsCount,
+				publishedCurriculumVersions: publishedVersionsCount,
+				groupCurriculumAssignments: groupAssignmentsCount,
+				workingCurricula: workingCurriculaCount,
+				confirmedTeacherLoad: confirmedLoadCount,
+				publishedSchedules: publishedSchedulesCount
 			}
 		}
 	}

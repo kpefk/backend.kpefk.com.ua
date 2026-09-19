@@ -27,8 +27,11 @@ import type {
 	UpdateSubjectAssignmentDto
 } from './dto/subject-assignment.dto'
 import {
+	consultationRatio,
 	MIN_PRACTICE_SUBGROUP_SIZE,
 	MIN_SUBGROUP_SIZE,
+	NORM_ATTESTATION_CONSULTATION_HOURS_PER_GROUP,
+	NORM_ATTESTATION_HOURS_PER_STUDENT_PER_MEMBER,
 	NORM_DIPLOMA_COMMITTEE_HOURS_PER_MEMBER,
 	NORM_MAX_DIPLOMA_WORKS_PER_TEACHER,
 	NORM_MAX_DISCIPLINES,
@@ -562,6 +565,61 @@ export class SubjectAssignmentsService {
 					)
 				}
 			}
+
+			// ── Per-group subjects: атестація у формі іспиту (п.19, п.21, п.22) ───────
+			// Кваліфікаційний іспит / ЄДКІ — п.22, ДПА за курс профільної середньої
+			// школи — п.19: по 0.5 год на здобувача на кожного члена комісії.
+			// Консультації перед атестацією — 2 год на групу (п.21 для кваліфікаційного
+			// іспиту; п.10 — перед атестацією з дисципліни, що входить до програми).
+			// Місця в комісії розподіляються окремо, як і для захисту дипломів (п.20).
+			if (
+				componentType === 'QUALIFICATION_EXAM' ||
+				componentType === 'STATE_EXAM'
+			) {
+				for (const gid of groupIds) {
+					const studentCount = studentCountByGroup.get(gid) ?? 0
+					if (studentCount === 0) continue
+
+					const sk = `${termId}:${gid}`
+					const saId = randomUUID()
+					subjectRows.push({
+						id: saId,
+						workingCurriculumId,
+						curriculumComponentTermId: termId,
+						groupId: gid,
+						academicYear: year,
+						primaryTeacherId: savedPrimary.get(sk) ?? null,
+						assignedById: userId,
+						status: 'DRAFT'
+					})
+
+					lessonRows.push({
+						id: randomUUID(),
+						subjectAssignmentId: saId,
+						lessonType: 'ATTESTATION_CONSULTATION',
+						subgroupNumber: null,
+						hours: NORM_ATTESTATION_CONSULTATION_HOURS_PER_GROUP,
+						overrideTeacherId:
+							savedOverride.get(
+								`${sk}:ATTESTATION_CONSULTATION:null`
+							) ?? null
+					})
+
+					const committeeHours = Math.round(
+						NORM_ATTESTATION_HOURS_PER_STUDENT_PER_MEMBER *
+							studentCount
+					)
+					if (committeeHours > 0) {
+						pushLessons(
+							saId,
+							sk,
+							'ATTESTATION_COMMITTEE',
+							committeeHours,
+							wct.attestationCommitteeSize
+						)
+					}
+				}
+			}
 		}
 
 		// Транзакція: видаляємо DRAFT, вставляємо нові записи.
@@ -869,6 +927,11 @@ export class SubjectAssignmentsService {
 			)
 		}
 
+		// N1/N2 [SOFT WARN]: нормативні зауваження до розподілу годин робочого плану.
+		// Доти вони писались лише в лог сервера — тобто той, хто підписує наказ, їх
+		// не бачив. Тепер вони доходять до нього разом з рештою попереджень.
+		warnings.push(...(await this.collectNormWarnings(workingCurriculumId)))
+
 		// Жорсткі перевірки (C0/C1), запис і синхронізація teacherId — в одній серіалізованій
 		// транзакції. Serializable закриває check-to-write вікно: якщо між перевіркою ліміту
 		// 720×rate і записом хтось конкурентно змінить навантаження цього року — одна з
@@ -1067,6 +1130,80 @@ export class SubjectAssignmentsService {
 			`Confirmed ${confirmedCount} subject assignments for WC id=${workingCurriculumId}, order=${orderNumber}`
 		)
 		return { confirmed: confirmedCount, warnings }
+	}
+
+	/**
+	 * Нормативні зауваження до розподілу годин робочого плану:
+	 *  • перевищення ліміту консультацій — Наказ МОН №686, п.9 (2 % денна, 6 % заочна);
+	 *  • поділ на підгрупи без зазначеної підстави — п.5–6 у редакції Наказу №472
+	 *    (поділ допустимий лише з огляду на особливості вивчення дисципліни або
+	 *    вимоги нормативно-правових актів щодо безпечних умов навчання).
+	 */
+	private async collectNormWarnings(
+		workingCurriculumId: string
+	): Promise<string[]> {
+		const wc = await this.prisma.workingCurriculum.findUnique({
+			where: { id: workingCurriculumId },
+			select: {
+				version: {
+					select: {
+						curriculum: { select: { educationForm: true } }
+					}
+				},
+				componentTerms: {
+					select: {
+						consultationHours: true,
+						componentTerm: {
+							select: {
+								hours: true,
+								semesterNumber: true,
+								subgroupCount: true,
+								subgroupJustification: true,
+								component: {
+									select: { code: true, name: true }
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+		if (!wc) return []
+
+		const ratio = consultationRatio(wc.version.curriculum.educationForm)
+		const warnings: string[] = []
+
+		for (const term of wc.componentTerms) {
+			const { componentTerm } = term
+			const label = componentTerm.component.code
+				? `${componentTerm.component.code} «${componentTerm.component.name}»`
+				: `«${componentTerm.component.name}»`
+			const where = `${label}, семестр ${componentTerm.semesterNumber}`
+
+			if (
+				componentTerm.hours > 0 &&
+				term.consultationHours > componentTerm.hours * ratio
+			) {
+				warnings.push(
+					`${where}: консультації ${term.consultationHours} год перевищують ` +
+						`${ratio * 100} % обсягу компонента (${componentTerm.hours} год) — ` +
+						'Наказ МОН №686, п.9.'
+				)
+			}
+
+			if (
+				componentTerm.subgroupCount >= 2 &&
+				(componentTerm.subgroupJustification === null ||
+					componentTerm.subgroupJustification.trim().length === 0)
+			) {
+				warnings.push(
+					`${where}: поділ на ${componentTerm.subgroupCount} підгрупи без зазначеної ` +
+						'підстави — Наказ МОН №686, п.5–6 (ред. Наказу №472).'
+				)
+			}
+		}
+
+		return warnings
 	}
 
 	/**
